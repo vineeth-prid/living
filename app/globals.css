@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Living — design tokens (single source of truth: brand guide)
+   Warm-cool luxury triad: Pine · Stone · Clay
+   ============================================================ */
+@theme {
+  /* Pine — primary (teal-green, matched to livingbyitr.com) */
+  --color-pine-50: #edf3f1;
+  --color-pine-100: #d7e5e1;
+  --color-pine-200: #b0cbc4;
+  --color-pine-300: #83aaa1;
+  --color-pine-400: #4f857a;
+  --color-pine-500: #2f6f62;
+  --color-pine-600: #276055;
+  --color-pine-700: #1c4a41;
+  --color-pine-800: #12352f;
+  --color-pine-900: #0d2b2c;
+  --color-pine-950: #08201f;
+
+  /* Stone — warm neutrals (ivory → ink) */
+  --color-stone-50: #faf8f4;
+  --color-stone-100: #f3efe8;
+  --color-stone-200: #e7e1d5;
+  --color-stone-300: #d5ccbc;
+  --color-stone-400: #b4a995;
+  --color-stone-500: #8b8171;
+  --color-stone-600: #6a6255;
+  --color-stone-700: #4d473f;
+  --color-stone-800: #322e29;
+  --color-stone-900: #1e1b18;
+  --color-stone-950: #14110f;
+
+  /* Clay — single accent (gold, matched to livingbyitr.com) */
+  --color-clay-50: #f8f1de;
+  --color-clay-100: #efe0b8;
+  --color-clay-200: #e4cd92;
+  --color-clay-300: #d5b366;
+  --color-clay-400: #cba450;
+  --color-clay-500: #c8a04c;
+  --color-clay-600: #9a742b;
+  --color-clay-700: #856425;
+  --color-clay-800: #63491b;
+  --color-clay-900: #453314;
+
+  /* Semantic */
+  --color-success: #3e7c5a;
+  --color-warning: #c2941f;
+  --color-danger: #b4483c;
+  --color-info: #3f6e8c;
+
+  /* Fonts */
+  --font-display: var(--font-cormorant), Georgia, serif;
+  --font-sans: var(--font-schibsted), -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Radii */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-media: 22px;
+  --radius-hero: 32px;
+
+  /* Warm layered shadows (ink-tinted, never harsh black) */
+  --shadow-soft: 0 1px 2px rgba(20, 17, 15, 0.04), 0 6px 16px rgba(20, 17, 15, 0.06);
+  --shadow-lift: 0 2px 4px rgba(20, 17, 15, 0.05), 0 14px 32px rgba(20, 17, 15, 0.1);
+  --shadow-float: 0 8px 20px rgba(20, 17, 15, 0.08), 0 30px 60px rgba(20, 17, 15, 0.12);
+
+  /* Easing — calm, no bounce */
+  --ease-calm: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Editorial display scale */
+  --text-display-hero: clamp(3.5rem, 8vw, 6.5rem);
+  --text-display-xl: clamp(2.75rem, 6vw, 4.75rem);
+  --text-display-lg: clamp(2.25rem, 4.5vw, 3.5rem);
+}
+
+:root {
+  --page: #faf8f5; /* warm cream — matches livingbyitr.com */
+  --ink: #0d2b2c; /* dark teal — headings */
+  --body: #2b3d39; /* grey-green — body copy */
+  --muted: #5c6d67; /* grey-green — muted */
+  --hairline: #e7e1d5;
+  --surface: #ffffff;
+  color-scheme: light;
+}
+
+* {
+  border-color: var(--hairline);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--page);
+  color: var(--body);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--color-pine-600);
+  color: var(--color-stone-50);
+}
+
+/* Utilities layered on the token system */
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+  }
+  .text-ink { color: var(--ink); }
+  .text-body { color: var(--body); }
+  .text-muted { color: var(--muted); }
+  .bg-page { background: var(--page); }
+  .bg-surface { background: var(--surface); }
+  .border-hairline { border-color: var(--hairline); }
+
+  .display-hero { font-size: var(--text-display-hero); line-height: 1.02; }
+  .display-xl { font-size: var(--text-display-xl); line-height: 1.06; }
+  .display-lg { font-size: var(--text-display-lg); line-height: 1.1; }
+
+  /* Tracked all-caps eyebrow — the only ALL-CAPS allowed */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-clay-700);
+  }
+
+  .mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+
+  /* Protection scrim — the only permitted image gradient */
+  .scrim-b::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(20, 17, 15, 0.55), rgba(20, 17, 15, 0.05) 55%, transparent);
+    pointer-events: none;
+  }
+  .scrim-full::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgba(20, 17, 15, 0.72), rgba(20, 17, 15, 0.28) 45%, rgba(20, 17, 15, 0.34));
+    pointer-events: none;
+  }
+
+  .shadow-soft { box-shadow: var(--shadow-soft); }
+  .shadow-lift { box-shadow: var(--shadow-lift); }
+  .shadow-float { box-shadow: var(--shadow-float); }
+
+  /* Glass panel over photography */
+  .glass {
+    background: rgba(250, 248, 245, 0.78);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .shell { width: 100%; max-width: 78rem; margin-inline: auto; padding-inline: 1.5rem; }
+  @media (min-width: 768px) { .shell { padding-inline: 2.5rem; } }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
