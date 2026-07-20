@@ -1,49 +1,35 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Phone, MessageCircle } from "lucide-react";
 import { telLink, waLink, site } from "@/lib/site";
 import type { ReactNode } from "react";
 
-// "The Threshold" — an open doorway arch framing a single Clay full-stop.
-// No buildings, no roofs. Reverses to ivory on dark/photo surfaces via `tone`.
-export function Mark({
+// The Living wordmark. `tone="ivory"` uses the reversed logo for dark surfaces.
+export function Logo({
+  tone = "color",
   className,
-  tone = "pine",
+  priority,
+  linked = true,
 }: {
+  tone?: "color" | "ivory";
   className?: string;
-  tone?: "pine" | "ivory";
+  priority?: boolean;
+  linked?: boolean;
 }) {
-  const arch = tone === "ivory" ? "#FAF8F4" : "#234B39";
-  return (
-    <svg viewBox="0 0 32 40" className={className} aria-hidden="true" fill="none">
-      <path
-        d="M4 39V17C4 10.373 9.373 5 16 5s12 5.373 12 12v22"
-        stroke={arch}
-        strokeWidth="2.4"
-        strokeLinecap="round"
-      />
-      <circle cx="16" cy="30" r="3.1" fill="#B96A43" />
-    </svg>
+  const img = (
+    <Image
+      src={tone === "ivory" ? "/logo-light.png" : "/logo.png"}
+      alt="Living — by ITR Groups"
+      width={1337}
+      height={448}
+      priority={priority}
+      className={`w-auto ${className ?? "h-9"}`}
+    />
   );
-}
-
-export function Wordmark({
-  tone = "pine",
-  className,
-}: {
-  tone?: "pine" | "ivory";
-  className?: string;
-}) {
-  const text = tone === "ivory" ? "text-stone-50" : "text-ink";
+  if (!linked) return img;
   return (
-    <Link
-      href="/"
-      aria-label="Living — home"
-      className={`inline-flex items-center gap-2 ${className ?? ""}`}
-    >
-      <Mark className="h-8 w-auto" tone={tone} />
-      <span className={`font-display text-2xl leading-none ${text}`}>
-        Living<span className="text-clay-500">.</span>
-      </span>
+    <Link href="/" aria-label="Living — home" className="inline-flex items-center">
+      {img}
     </Link>
   );
 }

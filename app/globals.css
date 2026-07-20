@@ -135,6 +135,16 @@ body {
   .mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
 
   /* Protection scrim — the only permitted image gradient */
+  /* Top scrim — quietly darkens the area under the nav for legibility */
+  .scrim-t::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 168px;
+    background: linear-gradient(to bottom, rgba(20, 17, 15, 0.4), transparent);
+    pointer-events: none;
+    z-index: 1;
+  }
   .scrim-b::after {
     content: "";
     position: absolute;

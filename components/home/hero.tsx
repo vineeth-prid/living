@@ -26,7 +26,7 @@ export function Hero() {
   return (
     <section
       ref={ref}
-      className="scrim-b relative flex min-h-[100svh] items-end overflow-hidden"
+      className="scrim-t scrim-b relative flex min-h-[100svh] items-end overflow-hidden"
     >
       {/* Background image — slow zoom-in on load, parallax on scroll */}
       <motion.div

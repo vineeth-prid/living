@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { nav } from "@/lib/site";
-import { Wordmark, Button } from "./ui";
+import { Logo, Button } from "./ui";
 
 export function SiteNav() {
   const [scrolled, setScrolled] = useState(false);
@@ -22,16 +22,21 @@ export function SiteNav() {
 
   useEffect(() => setOpen(false), [pathname]);
 
+  // Over the dark home hero (top, not scrolled) the bar is transparent and
+  // its contents are ivory; everywhere else contents are ink.
+  const isHome = pathname === "/";
+  const light = isHome && !scrolled && !open;
+
   return (
     <header
-      className={`glass fixed inset-x-0 top-0 z-50 transition-all duration-300 ease-[var(--ease-calm)] ${
-        scrolled
-          ? "border-b border-stone-200/70 py-3 shadow-soft"
-          : "border-b border-stone-200/40 py-5"
+      className={`fixed inset-x-0 top-0 z-50 transition-all duration-500 ease-[var(--ease-calm)] ${
+        scrolled || open
+          ? "border-b border-stone-200/60 bg-gradient-to-b from-stone-50/90 to-stone-50/60 py-3 shadow-soft backdrop-blur-xl"
+          : "border-b border-transparent bg-transparent py-5"
       }`}
     >
       <nav className="shell flex items-center justify-between">
-        <Wordmark />
+        <Logo tone={light ? "ivory" : "color"} priority className="h-8 md:h-9" />
 
         <div className="hidden items-center gap-8 md:flex">
           {nav.map((item) => {
@@ -44,13 +49,15 @@ export function SiteNav() {
                 key={item.href}
                 href={item.href}
                 className={`text-[15px] transition-colors ${
-                  active
-                    ? "text-pine-700"
-                    : "text-body hover:text-pine-700"
+                  light
+                    ? "text-stone-100 hover:text-white"
+                    : active
+                      ? "text-pine-700"
+                      : "text-body hover:text-pine-700"
                 }`}
               >
                 {item.label}
-                {active && (
+                {active && !light && (
                   <motion.span
                     layoutId="nav-underline"
                     className="mx-auto mt-1 block h-px bg-clay-500"
@@ -62,13 +69,23 @@ export function SiteNav() {
         </div>
 
         <div className="hidden md:block">
-          <Button href="/contact" variant="primary">
+          <Button
+            href="/contact"
+            variant={light ? "ghost" : "primary"}
+            className={
+              light
+                ? "border-stone-50/50 text-stone-50 hover:border-stone-50 hover:text-stone-50"
+                : ""
+            }
+          >
             Talk to us
           </Button>
         </div>
 
         <button
-          className="flex h-11 w-11 items-center justify-center md:hidden"
+          className={`flex h-11 w-11 items-center justify-center md:hidden ${
+            light ? "text-stone-50" : "text-ink"
+          }`}
           onClick={() => setOpen((v) => !v)}
           aria-label={open ? "Close menu" : "Open menu"}
           aria-expanded={open}
@@ -84,7 +101,7 @@ export function SiteNav() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
-            className="glass overflow-hidden border-t border-stone-200/60 md:hidden"
+            className="overflow-hidden border-t border-stone-200/60 md:hidden"
           >
             <div className="shell flex flex-col gap-1 py-4">
               {nav.map((item) => (

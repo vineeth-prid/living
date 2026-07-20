@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Phone, Mail, MapPin, MessageCircle } from "lucide-react";
 import { site, nav, telLink, mailLink, waLink } from "@/lib/site";
-import { Mark } from "./ui";
+import { Logo } from "./ui";
 
 export function SiteFooter() {
   return (
@@ -9,13 +9,8 @@ export function SiteFooter() {
       <div className="shell py-20">
         <div className="grid gap-12 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
-            <div className="flex items-center gap-2">
-              <Mark className="h-9 w-auto" tone="ivory" />
-              <span className="font-display text-3xl text-stone-50">
-                Living<span className="text-clay-400">.</span>
-              </span>
-            </div>
-            <p className="mt-5 max-w-sm font-display text-2xl leading-snug text-stone-100">
+            <Logo tone="ivory" className="h-11" />
+            <p className="mt-6 max-w-sm font-display text-2xl leading-snug text-stone-100">
               Life happens here.
             </p>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-stone-400">
