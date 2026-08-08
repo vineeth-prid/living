@@ -27,14 +27,13 @@ import {
   VendorScreen,
 } from "@/components/platform/devices";
 import { CustomerJourney, AdminDashboard } from "@/components/platform/showcase";
-import { waLink, site } from "@/lib/site";
+import { waLink, site, pageMeta } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "The platform — apartment, facility & community management, Kochi",
-  description:
-    "One elegant platform for residents, vendors and associations: facility management, complaints, preventive maintenance, home services, marketplace and analytics across Kochi and Kerala.",
-  alternates: { canonical: "/platform" },
-};
+export const metadata: Metadata = pageMeta(
+  "Apartment & Facility Management Platform, Kochi",
+  "One platform for residents, vendors and associations — facility management, complaints, preventive maintenance, home services and analytics across Kerala.",
+  "/platform",
+);
 
 const challenges = [
   {
@@ -97,6 +96,25 @@ const features = [
   },
 ];
 
+// featureList reads the same array the capabilities grid renders, so the two
+// can never drift apart.
+const platformSchema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Living Platform",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web, iOS, Android",
+  description:
+    "Community and facility management platform for apartment and villa communities — resident app, vendor app and association dashboard.",
+  provider: { "@id": `${site.url}/#organization` },
+  featureList: features.map((f) => f.title),
+  offers: {
+    "@type": "Offer",
+    priceCurrency: "INR",
+    availability: "https://schema.org/InStock",
+  },
+};
+
 const security = [
   "Role-based access for residents, vendors and committees",
   "Encrypted data, in transit and at rest",
@@ -129,24 +147,25 @@ export default function PlatformPage() {
         ])}
       />
       <JsonLd data={faqSchema(faqs)} />
+      <JsonLd data={platformSchema} />
 
       <PageHeader
-        eyebrow="The platform"
+        eyebrow="Apartment & Facility Management Platform, Kochi"
         title="A calm home to manage."
         intro="One refined platform for residents, vendors and associations — so a community runs itself quietly in the background, and everyone just lives."
         visual={<CustomerJourney />}
       />
 
       {/* CHALLENGES */}
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page py-14 md:py-20">
         <div className="shell">
           <Reveal className="max-w-2xl">
-            <Eyebrow>The challenge</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Why Apartment Communities in Kochi Struggle</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               Managing a community shouldn't feel like a second job.
-            </h2>
+            </p>
           </Reveal>
-          <Stagger className="mt-14 grid gap-6 md:grid-cols-3">
+          <Stagger className="mt-10 grid gap-6 md:grid-cols-3">
             {challenges.map((c) => (
               <StaggerItem key={c.title}>
                 <div className="h-full rounded-card border border-hairline bg-surface p-8 shadow-soft">
@@ -163,13 +182,13 @@ export default function PlatformPage() {
       </section>
 
       {/* HOW LIVING SOLVES IT — Resident app */}
-      <section className="overflow-hidden bg-surface py-16 md:py-24">
+      <section className="overflow-hidden bg-surface py-14 md:py-20">
         <div className="shell grid items-center gap-12 md:grid-cols-2">
           <Reveal>
-            <Eyebrow>How Living solves it · Resident app</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Resident App for Apartment Communities</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               Everything in its place, in your pocket.
-            </h2>
+            </p>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
               Dues, complaints, visitors, amenities and home services — one
               elegant app residents actually want to open. Calm, quick, and
@@ -197,13 +216,13 @@ export default function PlatformPage() {
       </section>
 
       {/* Vendor app */}
-      <section className="overflow-hidden bg-page py-16 md:py-24">
+      <section className="overflow-hidden bg-page py-14 md:py-20">
         <div className="shell grid items-center gap-12 md:grid-cols-2">
           <Reveal delay={0.1} className="md:order-2">
-            <Eyebrow>Vendor app</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Vendor App for Facility Management</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               Work that flows, not fights.
-            </h2>
+            </p>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
               Vendors see their day at a glance — jobs, routes, and preventive
               schedules — and residents see honest, real-time updates. Good work,
@@ -221,13 +240,13 @@ export default function PlatformPage() {
       </section>
 
       {/* ASSOCIATION / ADMIN DASHBOARD */}
-      <section className="bg-surface py-16 md:py-24">
+      <section className="bg-surface py-14 md:py-20">
         <div className="shell">
           <Reveal className="max-w-2xl">
-            <Eyebrow>Association dashboard</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Association Dashboard for Kerala Communities</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               The whole community, on one screen.
-            </h2>
+            </p>
             <p className="mt-6 text-lg leading-relaxed text-body">
               Collections, complaints, facilities and finance — the committee's
               command centre, clear enough to run the community in minutes a day.
@@ -240,15 +259,15 @@ export default function PlatformPage() {
       </section>
 
       {/* CAPABILITIES GRID */}
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page py-14 md:py-20">
         <div className="shell">
           <Reveal className="max-w-2xl">
-            <Eyebrow>One platform, everything covered</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">One platform, everything covered</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               The whole community, considered.
-            </h2>
+            </p>
           </Reveal>
-          <Stagger className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <Stagger className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((f) => (
               <StaggerItem key={f.title}>
                 <div className="flex h-full flex-col rounded-card border border-hairline bg-surface p-7 shadow-soft transition-shadow duration-300 hover:shadow-lift">
@@ -267,7 +286,7 @@ export default function PlatformPage() {
       </section>
 
       {/* FUTURE AI ASSISTANT */}
-      <section className="bg-pine-50 py-16 md:py-24">
+      <section className="bg-pine-50 py-14 md:py-20">
         <div className="shell grid items-center gap-12 md:grid-cols-[1fr_1.1fr]">
           <Reveal>
             <span className="inline-flex items-center gap-2 rounded-full border border-pine-200 bg-surface px-4 py-1.5 text-xs font-medium text-clay-700">
@@ -310,13 +329,13 @@ export default function PlatformPage() {
       </section>
 
       {/* SECURITY */}
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page py-14 md:py-20">
         <div className="shell grid gap-12 md:grid-cols-2 md:gap-12">
           <Reveal>
-            <Eyebrow>Security & trust</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Security & trust</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               Built to be trusted with home.
-            </h2>
+            </p>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
               A community's data is deeply personal. Living treats it that way —
               private by default, secure by design.

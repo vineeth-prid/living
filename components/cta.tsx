@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Phone, MessageCircle } from "lucide-react";
 import { Reveal } from "./motion";
 import { Eyebrow } from "./ui";
@@ -8,17 +9,22 @@ export function CtaBand({
   title = "Let's find where your life happens.",
   body = "A short, unhurried conversation with a Living property expert — no pressure, no jargon.",
   message,
+  secondaryHref,
+  secondaryLabel,
 }: {
   eyebrow?: string;
   title?: string;
   body?: string;
   message?: string;
+  // Optional third action, used by the homepage to point at the services hub.
+  secondaryHref?: string;
+  secondaryLabel?: string;
 }) {
   const btn =
     "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[12px] px-6 py-3 text-[15px] font-medium transition-all duration-200 ease-[var(--ease-calm)] active:scale-[0.98]";
   return (
     <section className="bg-pine-700">
-      <div className="shell py-16 md:py-24">
+      <div className="shell py-14 md:py-20">
         <Reveal className="max-w-2xl">
           <Eyebrow>
             <span className="text-clay-300">{eyebrow}</span>
@@ -46,6 +52,14 @@ export function CtaBand({
               <MessageCircle className="h-4 w-4" strokeWidth={1.75} />
               WhatsApp
             </a>
+            {secondaryHref && secondaryLabel && (
+              <Link
+                href={secondaryHref}
+                className={`${btn} border border-stone-50/40 text-stone-50 hover:border-stone-50`}
+              >
+                {secondaryLabel}
+              </Link>
+            )}
           </div>
         </Reveal>
       </div>

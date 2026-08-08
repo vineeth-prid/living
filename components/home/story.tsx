@@ -1,74 +1,44 @@
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { Reveal, ZoomImage, Parallax } from "@/components/motion";
 import { Eyebrow } from "@/components/ui";
 import { img } from "@/lib/images";
 
-const chapters = [
-  {
-    eyebrow: "Who we are",
-    title: "A home, and everything that makes it one.",
-    body: "Living is a premium property and living brand from ITR Group — bringing fifteen years of building trust in Kerala into one calm, considered experience.",
-    image: img.storyLiving,
-    alt: "Warm, softly-lit contemporary living room with natural materials",
-  },
-  {
-    eyebrow: "Why Living exists",
-    title: "Because a home should feel effortless.",
-    body: "Finding, owning and running a home has always been fragmented and anxious. We bring it together — sales, concierge, and community — so it simply feels like home.",
-    image: img.storyDetail,
-    alt: "Close detail of natural wood and linen textures in a calm interior",
-  },
-  {
-    eyebrow: "What Living represents",
-    title: "Calm. Warm. Refined. Effortless.",
-    body: "Luxury here is not loud. It is whitespace, natural light, and the quiet confidence that everything is handled — so you can just live.",
-    image: img.storyMorning,
-    alt: "Soft morning light across a serene bedroom",
-  },
-];
-
+// Condensed from three chapters to one. The deeper story (mission, values,
+// timeline, leadership) lives on /about — this is the homepage summary.
 export function BrandStory() {
   return (
-    <section className="bg-page py-16 md:py-24">
-      <div className="shell">
-        <Reveal className="mx-auto max-w-3xl text-center">
-          <Eyebrow>Our story</Eyebrow>
-          <h2 className="mt-5 font-display font-light text-ink display-lg">
-            We build the feeling of home — then look after it.
-          </h2>
+    <section className="bg-surface py-14 md:py-20">
+      <div className="shell grid items-center gap-10 md:grid-cols-2 md:gap-14">
+        <Reveal>
+          <Eyebrow as="h2">Fifteen Years of ITR Group in Kerala</Eyebrow>
+          <p className="mt-4 font-display font-light text-ink display-lg">
+            More than a property brand.
+          </p>
+          <p className="mt-5 text-lg leading-relaxed text-body">
+            Living brings together property expertise, concierge services and
+            technology to make owning, managing and living in a home feel
+            effortless — backed by fifteen years of ITR Group&apos;s work across
+            Kerala.
+          </p>
+          <Link
+            href="/about"
+            className="mt-7 inline-flex items-center gap-1.5 text-[15px] font-medium text-pine-700 hover:text-pine-800"
+          >
+            Discover Living
+            <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
+          </Link>
         </Reveal>
 
-        <div className="mt-12 flex flex-col gap-14 md:mt-12 md:gap-14">
-          {chapters.map((c, i) => (
-            <div
-              key={c.eyebrow}
-              className="grid items-center gap-10 md:grid-cols-2 md:gap-12"
-            >
-              <div className={i % 2 === 1 ? "md:order-2" : ""}>
-                <Reveal>
-                  <Eyebrow>{c.eyebrow}</Eyebrow>
-                  <h3 className="mt-4 font-display font-light text-ink display-lg">
-                    {c.title}
-                  </h3>
-                  <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
-                    {c.body}
-                  </p>
-                </Reveal>
-              </div>
-              <div className={i % 2 === 1 ? "md:order-1" : ""}>
-                <Parallax
-                  distance={40}
-                  className="aspect-[4/5] rounded-media shadow-lift"
-                >
-                  <ZoomImage
-                    src={c.image}
-                    alt={c.alt}
-                    className="h-full w-full"
-                  />
-                </Parallax>
-              </div>
-            </div>
-          ))}
-        </div>
+        <Reveal delay={0.1}>
+          <Parallax distance={40} className="aspect-[4/3] rounded-media shadow-lift">
+            <ZoomImage
+              src={img.storyLiving}
+              alt="Warm, softly-lit contemporary living room with natural materials"
+              className="h-full w-full"
+            />
+          </Parallax>
+        </Reveal>
       </div>
     </section>
   );

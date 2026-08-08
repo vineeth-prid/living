@@ -78,7 +78,9 @@
   --page: #faf8f5; /* warm cream — matches livingbyitr.com */
   --ink: #0d2b2c; /* dark teal — headings */
   --body: #2b3d39; /* grey-green — body copy */
-  --muted: #5c6d67; /* grey-green — muted */
+  /* Darkened from #5c6d67 (5.2:1) to 6.9:1 on --page. Supporting text is often
+     set at 14px, where the old value was legible but strained. Still soft. */
+  --muted: #4a5a55; /* grey-green — muted */
   --hairline: #e7e1d5;
   --surface: #ffffff;
   color-scheme: light;
@@ -123,11 +125,14 @@ body {
   .display-lg { font-size: var(--text-display-lg); line-height: 1.1; }
 
   /* Tracked all-caps eyebrow — the only ALL-CAPS allowed */
+  /* Eyebrows now carry the section h2, so they sit at 13px rather than 12px —
+     the smallest step that reads as a heading without changing the treatment. */
   .eyebrow {
     font-family: var(--font-sans);
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
     font-weight: 600;
     letter-spacing: 0.08em;
+    line-height: 1.4;
     text-transform: uppercase;
     color: var(--color-clay-700);
   }

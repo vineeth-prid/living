@@ -6,14 +6,13 @@ import { Reveal } from "@/components/motion";
 import { Eyebrow } from "@/components/ui";
 import { JsonLd, breadcrumb } from "@/components/schema";
 import { img } from "@/lib/images";
-import { site, telLink, mailLink, waLink } from "@/lib/site";
+import { site, pageMeta, telLink, mailLink, waLink } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "Contact — talk to Living in Kakkanad, Ernakulam",
-  description:
-    "Talk to Living. Call 8089 00 55 00, WhatsApp us, or visit our Kakkanad head office in Ernakulam, Kerala. Premium property, NRI services and community platform.",
-  alternates: { canonical: "/contact" },
-};
+export const metadata: Metadata = pageMeta(
+  "Contact — Kakkanad, Ernakulam",
+  "Talk to Living. Call 8089 00 55 00, WhatsApp us, or visit our Kakkanad head office in Ernakulam, Kerala. Property, NRI services and platform.",
+  "/contact",
+);
 
 const cards = [
   { icon: Phone, label: "Call us", value: site.phone, href: telLink, mono: true },
@@ -33,22 +32,22 @@ export default function ContactPage() {
       />
 
       <PageHeader
-        eyebrow="Contact"
+        eyebrow="Contact Living — Kakkanad, Ernakulam"
         title="Let's talk about home."
         intro="Whether you're buying, selling, living, or just curious — we'd love to hear from you. No pressure, no scripts."
         image={img.office}
         imageAlt="A warm, light-filled reception space at the Living office in Kakkanad"
       />
 
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page py-14 md:py-20">
         <div className="shell grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:gap-14">
           {/* Left — details */}
           <div>
             <Reveal>
-              <Eyebrow>Talk to us</Eyebrow>
-              <h2 className="mt-5 font-display font-light text-ink display-lg">
+              <Eyebrow as="h2">Talk to Living in Kakkanad, Ernakulam</Eyebrow>
+              <p className="mt-5 font-display font-light text-ink display-lg">
                 We're a call away.
-              </h2>
+              </p>
               <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
                 Reach us however suits you. Our team in Kakkanad replies within
                 one business day — usually much sooner.

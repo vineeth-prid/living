@@ -12,9 +12,9 @@ import {
   Maximize,
   Check,
 } from "lucide-react";
-import { photo } from "@/lib/images";
+import Image from "next/image";
 import type { Property } from "@/lib/properties";
-import { Button, ContactActions } from "./ui";
+import { ContactActions } from "./ui";
 import { Stagger, StaggerItem, LiftCard } from "./motion";
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
@@ -42,11 +42,12 @@ export function PropertyCard({
         className="group flex h-full w-full flex-col overflow-hidden rounded-media border border-hairline bg-surface text-left shadow-soft transition-shadow duration-300 hover:shadow-float"
       >
         <div className="relative aspect-[4/3] overflow-hidden">
-          <img
-            src={photo(property.gallery[0], 900)}
+          <Image
+            src={property.gallery[0]}
             alt={`${property.name} — ${property.type} in ${property.locality}, ${property.city}`}
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-[900ms] ease-[var(--ease-calm)] group-hover:scale-105"
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            className="object-cover transition-transform duration-[900ms] ease-[var(--ease-calm)] group-hover:scale-105"
           />
           <span className="absolute left-4 top-4 rounded-full bg-stone-50/90 px-3 py-1 text-xs font-medium text-pine-800 backdrop-blur">
             {property.status}
@@ -86,16 +87,22 @@ function Gallery({ property }: { property: Property }) {
   return (
     <div className="relative aspect-[16/10] overflow-hidden rounded-media bg-stone-100">
       <AnimatePresence mode="wait">
-        <motion.img
+        <motion.div
           key={i}
-          src={photo(property.gallery[i], 1200)}
-          alt={`${property.name} — view ${i + 1}`}
-          className="h-full w-full object-cover"
+          className="absolute inset-0"
           initial={{ opacity: 0, scale: 1.04 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5, ease: EASE }}
-        />
+        >
+          <Image
+            src={property.gallery[i]}
+            alt={`${property.name} — view ${i + 1}`}
+            fill
+            sizes="(max-width: 896px) 100vw, 896px"
+            className="object-cover"
+          />
+        </motion.div>
       </AnimatePresence>
       <button
         onClick={() => go(-1)}

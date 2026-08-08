@@ -8,12 +8,12 @@ import type { ReactNode } from "react";
 export function Logo({
   tone = "color",
   className,
-  priority,
+  preload,
   linked = true,
 }: {
   tone?: "color" | "ivory";
   className?: string;
-  priority?: boolean;
+  preload?: boolean;
   linked?: boolean;
 }) {
   const img = (
@@ -22,7 +22,7 @@ export function Logo({
       alt="Living — by ITR Groups"
       width={1337}
       height={448}
-      priority={priority}
+      preload={preload}
       className={`w-auto ${className ?? "h-9"}`}
     />
   );
@@ -34,8 +34,16 @@ export function Logo({
   );
 }
 
-export function Eyebrow({ children }: { children: ReactNode }) {
-  return <p className="eyebrow">{children}</p>;
+// `as` only swaps the tag — `.eyebrow` carries all the styling, and every tag
+// here is block-level, so promoting a label to a heading moves zero pixels.
+export function Eyebrow({
+  children,
+  as: Tag = "p",
+}: {
+  children: ReactNode;
+  as?: "p" | "h2" | "h3";
+}) {
+  return <Tag className="eyebrow">{children}</Tag>;
 }
 
 type BtnProps = {
@@ -121,7 +129,7 @@ export function Section({
     ink: "bg-stone-950 text-stone-100",
   }[tone ?? "page"];
   return (
-    <section id={id} className={`py-16 md:py-24 ${bg} ${className ?? ""}`}>
+    <section id={id} className={`py-14 md:py-20 ${bg} ${className ?? ""}`}>
       <div className="shell">{children}</div>
     </section>
   );

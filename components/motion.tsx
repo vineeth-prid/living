@@ -7,6 +7,7 @@ import {
   useTransform,
   type Variants,
 } from "framer-motion";
+import Image from "next/image";
 import { useRef, type ReactNode } from "react";
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
@@ -112,31 +113,39 @@ export function Parallax({
 }
 
 // Image that slowly zooms on scroll-in, with an optional reveal mask.
+// The zoom lives on a wrapper so next/image can own the <img> itself.
 export function ZoomImage({
   src,
   alt,
   className,
-  priority,
+  preload,
+  sizes = "(max-width: 768px) 100vw, 50vw",
 }: {
   src: string;
   alt: string;
   className?: string;
-  priority?: boolean;
+  preload?: boolean;
+  sizes?: string;
 }) {
   const reduce = useReducedMotion();
   return (
     <motion.div className={`relative overflow-hidden ${className ?? ""}`}>
-      <motion.img
-        src={src}
-        alt={alt}
-        loading={priority ? "eager" : "lazy"}
-        // eslint-disable-next-line @next/next/no-img-element
-        className="h-full w-full object-cover"
+      <motion.div
+        className="relative h-full w-full"
         initial={reduce ? false : { scale: 1.14, opacity: 0 }}
         whileInView={{ scale: 1, opacity: 1 }}
         viewport={{ once: true, margin: "-8% 0px" }}
         transition={{ duration: 1.5, ease: EASE }}
-      />
+      >
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          preload={preload}
+          sizes={sizes}
+          className="object-cover"
+        />
+      </motion.div>
     </motion.div>
   );
 }

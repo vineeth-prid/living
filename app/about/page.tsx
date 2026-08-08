@@ -6,14 +6,13 @@ import { Reveal, Stagger, StaggerItem, ZoomImage } from "@/components/motion";
 import { Eyebrow } from "@/components/ui";
 import { JsonLd, breadcrumb } from "@/components/schema";
 import { img } from "@/lib/images";
-import { site } from "@/lib/site";
+import { site, pageMeta } from "@/lib/site";
 
-export const metadata: Metadata = {
-  title: "About Living — a premium property brand by ITR Group, Kerala",
-  description:
-    "Living is a premium property and living brand by ITR Group, built on fifteen years of trust in Kerala. Our mission, values, legacy and vision for modern living in Kochi.",
-  alternates: { canonical: "/about" },
-};
+export const metadata: Metadata = pageMeta(
+  "About — Premium Property by ITR Group, Kerala",
+  "Living is a premium property and living brand by ITR Group, built on fifteen years of trust in Kerala. Our mission, values and vision for Kochi.",
+  "/about",
+);
 
 const timeline = [
   {
@@ -63,7 +62,7 @@ export default function AboutPage() {
       />
 
       <PageHeader
-        eyebrow="About Living"
+        eyebrow="About Living — Property by ITR Group, Kerala"
         title="Fifteen years of trust, gathered into one home."
         intro="Living is a premium property and living brand by ITR Group — everything we've learned about homes in Kerala, made calm, warm and effortless."
         image={img.legacy}
@@ -71,7 +70,7 @@ export default function AboutPage() {
       />
 
       {/* MISSION / VISION */}
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page py-14 md:py-20">
         <div className="shell grid gap-8 md:grid-cols-2">
           <Reveal>
             <div className="h-full rounded-hero border border-hairline bg-surface p-10 shadow-soft md:p-12">
@@ -105,13 +104,13 @@ export default function AboutPage() {
       </section>
 
       {/* TIMELINE / LEGACY */}
-      <section className="overflow-hidden bg-surface py-16 md:py-24">
+      <section className="overflow-hidden bg-surface py-14 md:py-20">
         <div className="shell">
           <Reveal className="max-w-2xl">
-            <Eyebrow>The legacy</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Fifteen Years of ITR Group in Kerala</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               A story fifteen years in the making.
-            </h2>
+            </p>
           </Reveal>
 
           <div className="mt-12 grid gap-12 md:grid-cols-[1fr_1.1fr] md:items-center md:gap-14">
@@ -146,15 +145,15 @@ export default function AboutPage() {
       </section>
 
       {/* VALUES */}
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page py-14 md:py-20">
         <div className="shell">
           <Reveal className="max-w-2xl">
-            <Eyebrow>Our values</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Our values</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               What we hold to, on every home.
-            </h2>
+            </p>
           </Reveal>
-          <Stagger className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <Stagger className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {values.map((v) => (
               <StaggerItem key={v.title}>
                 <div className="h-full rounded-card border border-hairline bg-surface p-8 shadow-soft">
@@ -171,19 +170,19 @@ export default function AboutPage() {
       </section>
 
       {/* LEADERSHIP */}
-      <section className="bg-surface py-16 md:py-24">
+      <section className="bg-surface py-14 md:py-20">
         <div className="shell">
           <Reveal className="max-w-2xl">
-            <Eyebrow>Leadership</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Leadership</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               The people behind Living.
-            </h2>
+            </p>
             <p className="mt-6 text-lg leading-relaxed text-body">
               A close team from ITR Group, each looking after one part of your
               experience. Full profiles are available on request.
             </p>
           </Reveal>
-          <Stagger className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <Stagger className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {leadership.map((l) => (
               <StaggerItem key={l.role}>
                 <div className="h-full rounded-card border border-hairline bg-page p-8 shadow-soft">
@@ -204,13 +203,13 @@ export default function AboutPage() {
       </section>
 
       {/* WHY LIVING + FUTURE VISION */}
-      <section className="bg-pine-50 py-16 md:py-24">
+      <section className="bg-pine-50 py-14 md:py-20">
         <div className="shell grid gap-12 md:grid-cols-2">
           <Reveal>
-            <Eyebrow>Why Living</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Why Living</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               Because home deserves better than fragments.
-            </h2>
+            </p>
             <p className="mt-6 leading-relaxed text-body">
               You shouldn't need five apps, three brokers and a folder of
               paperwork to live well. Living brings it together with the calm and
@@ -219,10 +218,10 @@ export default function AboutPage() {
             </p>
           </Reveal>
           <Reveal delay={0.1}>
-            <Eyebrow>Future vision</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <Eyebrow as="h2">Future vision</Eyebrow>
+            <p className="mt-5 font-display font-light text-ink display-lg">
               A single, intelligent home for living.
-            </h2>
+            </p>
             <p className="mt-6 leading-relaxed text-body">
               We're building toward a future where an assistant understands your
               home, communities run themselves quietly, and everything from a

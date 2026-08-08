@@ -27,50 +27,44 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
-    default: "Living — Life Happens Here. | Premium property & living, Kerala",
+    default: "Premium Property & NRI Services in Kochi | Living by ITR",
     template: "%s · Living",
   },
   description: site.description,
   applicationName: site.name,
-  keywords: [
-    "property management Ernakulam",
-    "property management Kochi",
-    "luxury apartments Kochi",
-    "NRI property management Kerala",
-    "property sales Ernakulam",
-    "facility management Kochi",
-    "apartment management Ernakulam",
-    "home services Ernakulam",
-  ],
-  alternates: { canonical: "/" },
+  // No title/description/url here on purpose — anything set becomes a default
+  // every page inherits, which is how og:url ends up hardcoded to the homepage.
   openGraph: {
     type: "website",
     locale: site.locale,
-    url: site.url,
     siteName: site.name,
-    title: "Living — Life Happens Here.",
-    description: site.description,
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "Living — Life Happens Here.",
-    description: site.description,
-  },
+  twitter: { card: "summary_large_image" },
   robots: { index: true, follow: true },
 };
 
 const orgSchema = {
   "@context": "https://schema.org",
   "@type": ["Organization", "RealEstateAgent", "LocalBusiness"],
+  // Stable @id so other pages' schema can reference this entity.
+  "@id": `${site.url}/#organization`,
   name: site.name,
   legalName: site.legalName,
   parentOrganization: { "@type": "Organization", name: site.parent },
   url: site.url,
+  logo: `${site.url}/logo.png`,
+  image: `${site.url}/opengraph-image`,
   slogan: site.tagline,
   description: site.description,
   telephone: site.phoneRaw,
   email: site.email,
-  areaServed: ["Ernakulam", "Kochi", "Kakkanad", "Kerala"],
+  sameAs: site.sameAs,
+  areaServed: [
+    { "@type": "City", name: "Kochi" },
+    { "@type": "City", name: "Ernakulam" },
+    { "@type": "Place", name: "Kakkanad" },
+    { "@type": "State", name: "Kerala" },
+  ],
   address: {
     "@type": "PostalAddress",
     streetAddress: site.address.line,
@@ -83,7 +77,34 @@ const orgSchema = {
     latitude: site.geo.lat,
     longitude: site.geo.lng,
   },
-  openingHours: "Mo-Sa 09:30-18:30",
+  openingHoursSpecification: [
+    {
+      "@type": "OpeningHoursSpecification",
+      dayOfWeek: [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+      ],
+      opens: "09:30",
+      closes: "18:30",
+    },
+  ],
+  hasOfferCatalog: {
+    "@type": "OfferCatalog",
+    name: "Living Services",
+    itemListElement: [
+      "Property Buying",
+      "Property Selling",
+      "NRI Property Concierge",
+      "Community & Facility Management Platform",
+    ].map((name) => ({
+      "@type": "Offer",
+      itemOffered: { "@type": "Service", name },
+    })),
+  },
 };
 
 export default function RootLayout({

@@ -6,7 +6,7 @@ import { Logo } from "./ui";
 export function SiteFooter() {
   return (
     <footer className="bg-pine-900 text-stone-300">
-      <div className="shell py-20">
+      <div className="shell py-16">
         <div className="grid gap-12 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
             <Logo tone="ivory" className="h-11" />
