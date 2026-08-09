@@ -46,3 +46,10 @@ next-env.d.ts
 
 # images live in object storage, kept locally only for offline dev
 /public/images
+
+# agent tooling state (claude-flow / ruflo)
+/.claude-flow/
+/.swarm/
+ruvector.db
+*.db-shm
+*.db-wal

@@ -3,6 +3,7 @@ import { Cormorant, Schibsted_Grotesk, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteNav } from "@/components/nav";
 import { SiteFooter } from "@/components/footer";
+import { JsonLd } from "@/components/schema";
 import { site } from "@/lib/site";
 
 const cormorant = Cormorant({
@@ -116,10 +117,7 @@ export default function RootLayout({
       className={`${cormorant.variable} ${schibsted.variable} ${plexMono.variable} h-full antialiased`}
     >
       <body className="min-h-full">
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }}
-        />
+        <JsonLd data={orgSchema} />
         <SiteNav />
         <main>{children}</main>
         <SiteFooter />
