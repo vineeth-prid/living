@@ -35,6 +35,10 @@ export function ContactForm() {
       "",
       message,
     ].join("\n");
+    // mailLink is a mailto: URL, not an internal route — router.push() cannot
+    // hand off to the mail client. The rule (new in eslint-config-next 16.3)
+    // only means to catch relative in-app destinations.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `${mailLink}?subject=${encodeURIComponent(
       subject,
     )}&body=${encodeURIComponent(body)}`;
