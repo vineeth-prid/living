@@ -264,3 +264,13 @@ SET "workflow_status" = 'published',
     "is_public" = true,
     "published_at" = COALESCE("published_at", now())
 WHERE "deleted_at" IS NULL;
+--> statement-breakpoint
+-- The public enquiry forms write leads with source_key 'website' or
+-- 'property_page'. leads.source_key is a foreign key, so on a database where
+-- `npm run db:seed` hasn't run yet those inserts would fail the constraint and
+-- every website enquiry would be silently rejected. Seed the two the code
+-- depends on here; db:seed adds the rest and is safe to re-run.
+INSERT INTO "lead_sources" ("key", "label", "sort_order", "is_active") VALUES
+  ('website', 'Website', 10, true),
+  ('property_page', 'Property page', 20, true)
+ON CONFLICT ("key") DO NOTHING;

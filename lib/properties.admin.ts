@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   properties,
@@ -15,7 +15,7 @@ import { can } from "./auth/dal";
 // other internal columns and must never be imported by a public page — the
 // public site goes through lib/properties.ts, which selects an allowlist.
 
-export const PAGE_SIZE = 25;
+const PAGE_SIZE = 25;
 
 export type PropertyFilters = {
   q?: string;
@@ -140,46 +140,6 @@ export async function propertyCities(): Promise<string[]> {
   return rows.map((r) => r.city).filter(Boolean);
 }
 
-export async function propertyStatusCounts() {
-  const rows = await db()
-    .select({
-      workflowStatus: properties.workflowStatus,
-      total: count(),
-    })
-    .from(properties)
-    .where(isNull(properties.deletedAt))
-    .groupBy(properties.workflowStatus);
-
-  return Object.fromEntries(rows.map((r) => [r.workflowStatus, r.total])) as
-    Partial<Record<WorkflowStatus, number>>;
-}
-
-/** Compact list for pickers (lead → interested properties). */
-export async function propertyOptions(query?: string) {
-  return db()
-    .select({
-      id: properties.id,
-      name: properties.name,
-      reference: properties.reference,
-      locality: properties.locality,
-      priceLabel: properties.priceLabel,
-    })
-    .from(properties)
-    .where(
-      and(
-        isNull(properties.deletedAt),
-        query
-          ? or(
-              ilike(properties.name, `%${query}%`),
-              ilike(properties.reference, `%${query}%`),
-            )
-          : undefined,
-      ),
-    )
-    .orderBy(desc(properties.createdAt))
-    .limit(20);
-}
-
 /** Latest reference, for generating the next LIV-xxxx. */
 export async function latestPropertyReference(): Promise<string | null> {
   const [row] = await db()
@@ -191,11 +151,3 @@ export async function latestPropertyReference(): Promise<string | null> {
   return row?.reference ?? null;
 }
 
-/** Leads interested in a given property (§19, reverse direction). */
-export async function propertyIds(ids: string[]) {
-  if (!ids.length) return [];
-  return db()
-    .select({ id: properties.id, name: properties.name, reference: properties.reference })
-    .from(properties)
-    .where(inArray(properties.id, ids));
-}

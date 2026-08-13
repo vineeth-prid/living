@@ -5,9 +5,7 @@ import {
   desc,
   eq,
   gte,
-  ilike,
-  inArray,
-  isNull,
+  ilike,  isNull,
   lte,
   or,
   sql,
@@ -28,7 +26,7 @@ import {
 } from "./db/schema";
 import type { SessionUser } from "./auth/session";
 
-export const LEAD_PAGE_SIZE = 25;
+const LEAD_PAGE_SIZE = 25;
 
 /**
  * §23 — the scope an employee is allowed to see, expressed as SQL.
@@ -439,10 +437,3 @@ export async function propertyPickerOptions(query?: string) {
     .limit(50);
 }
 
-export async function leadsByIds(ids: string[]) {
-  if (!ids.length) return [];
-  return db()
-    .select({ id: leads.id, name: leads.name })
-    .from(leads)
-    .where(inArray(leads.id, ids));
-}

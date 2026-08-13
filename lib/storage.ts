@@ -37,16 +37,16 @@ function client(): Client {
 
 const bucket = () => process.env.MINIO_BUCKET ?? "living-images";
 
-export const ALLOWED_IMAGE_TYPES = [
+const ALLOWED_IMAGE_TYPES = [
   "image/jpeg",
   "image/png",
   "image/webp",
   "image/avif",
 ];
-export const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm"];
-export const ALLOWED_DOC_TYPES = ["application/pdf"];
+const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm"];
+const ALLOWED_DOC_TYPES = ["application/pdf"];
 
-export const MAX_UPLOAD_BYTES = {
+const MAX_UPLOAD_BYTES = {
   image: 12 * 1024 * 1024,
   video: 200 * 1024 * 1024,
   document: 25 * 1024 * 1024,

@@ -42,14 +42,6 @@ export function can(user: SessionUser, permission: string): boolean {
   return user.role === "admin" || user.permissions.includes(permission);
 }
 
-export async function requirePermission(
-  permission: string,
-): Promise<SessionUser> {
-  const user = await requireUser();
-  if (!can(user, permission)) redirect("/admin/denied");
-  return user;
-}
-
 /** Admins see every lead; employees only their own and ones they created. */
 export const isAdmin = (user: SessionUser) => user.role === "admin";
 
@@ -58,11 +50,6 @@ export class ForbiddenError extends Error {
     super(message);
     this.name = "ForbiddenError";
   }
-}
-
-/** Guard for server actions and route handlers, which return rather than render. */
-export function assertPermission(user: SessionUser, permission: string) {
-  if (!can(user, permission)) throw new ForbiddenError();
 }
 
 export function assertAdmin(user: SessionUser) {

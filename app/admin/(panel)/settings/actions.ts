@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { leadSources, leadTypes } from "@/lib/db/schema";
 import {
-  ForbiddenError,
+  assertAdmin,
   fail,
   requireUser,
   succeed,
@@ -17,7 +17,7 @@ import { slugify } from "@/lib/ids";
 
 async function requireAdminActor() {
   const user = await requireUser();
-  if (user.role !== "admin") throw new ForbiddenError();
+  assertAdmin(user);
   return user;
 }
 

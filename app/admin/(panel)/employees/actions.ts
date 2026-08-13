@@ -10,6 +10,8 @@ import { generatePassword, hashPassword } from "@/lib/auth/password";
 import { destroyUserSessions } from "@/lib/auth/session";
 import {
   ForbiddenError,
+  PERMISSIONS,
+  assertAdmin,
   fail,
   requireUser,
   succeed,
@@ -17,13 +19,12 @@ import {
 } from "@/lib/auth/dal";
 import { audit, changedFields } from "@/lib/audit";
 import { newId } from "@/lib/ids";
-import { PERMISSIONS } from "@/lib/auth/dal";
 
 // Every action re-derives the actor from the session cookie. Nothing here reads
 // an actor id, role or permission out of the submitted form (§40).
 async function requireAdminActor() {
   const user = await requireUser();
-  if (user.role !== "admin") throw new ForbiddenError();
+  assertAdmin(user);
   return user;
 }
 

@@ -450,7 +450,10 @@ export async function uploadMedia(
   let imageIndex = existing;
 
   for (const file of files) {
-    const key = await uploadObject(file, `properties/${propertyId}`);
+    // Must stay under /images/: next.config.ts allows the image optimizer to
+    // fetch `${NEXT_PUBLIC_IMAGE_CDN}/images/**` and nothing else. Uploading
+    // anywhere else produces URLs next/image rejects with a 400.
+    const key = await uploadObject(file, `images/properties/${propertyId}`);
     order += 1;
     await db()
       .insert(propertyMedia)

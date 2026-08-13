@@ -32,17 +32,6 @@ export const PIPELINE_ORDER = [
   "closed_lost",
 ] as const;
 
-/** The funnel used for conversion reporting (§33) — excludes lost and hold. */
-export const FUNNEL_STEPS = [
-  "new",
-  "contacted",
-  "qualified",
-  "site_visit_scheduled",
-  "negotiation",
-  "booking",
-  "closed_won",
-] as const;
-
 const STATUS_TONE: Record<string, "neutral" | "blue" | "green" | "gold" | "red"> = {
   new: "blue",
   contacted: "blue",
