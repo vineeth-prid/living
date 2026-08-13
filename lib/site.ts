@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 // Single source of truth for site-wide facts (contact, nav, brand).
 export const site = {
   name: "Living",
@@ -21,7 +23,27 @@ export const site = {
   hours: "Mon – Sat · 9:30 to 6:30",
   // Kakkanad, Ernakulam approx.
   geo: { lat: 10.0159, lng: 76.3419 },
+  sameAs: [
+    "https://www.facebook.com/itrgroups.kochi/",
+    "https://www.instagram.com/itr_groups/",
+  ],
 } as const;
+
+// Per-page metadata: unique title + description, canonical, and matching OG.
+// `metadataBase` in the root layout turns the relative paths into absolute URLs.
+export function pageMeta(
+  title: string,
+  description: string,
+  path: string,
+): Metadata {
+  return {
+    title,
+    description,
+    alternates: { canonical: path },
+    // Mirrors the rendered <title>, which the root `%s · Living` template builds.
+    openGraph: { title: `${title} · ${site.name}`, description, url: path },
+  };
+}
 
 export const nav = [
   { label: "Home", href: "/" },

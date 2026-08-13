@@ -29,7 +29,7 @@ import { CtaBand } from "@/components/cta";
 import { Reveal, Stagger, StaggerItem, ZoomImage } from "@/components/motion";
 import { Eyebrow, Button } from "@/components/ui";
 import { JsonLd, breadcrumb, faqSchema } from "@/components/schema";
-import { properties } from "@/lib/properties";
+import { getProperties } from "@/lib/properties";
 import { img } from "@/lib/images";
 import { site, waLink } from "@/lib/site";
 
@@ -104,7 +104,8 @@ const faqs = [
   },
 ];
 
-export default function ServicesPage() {
+export default async function ServicesPage() {
+  const properties = await getProperties();
   return (
     <>
       <JsonLd

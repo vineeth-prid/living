@@ -1,0 +1,163 @@
+import type { InferInsertModel } from "drizzle-orm";
+import { imagePaths } from "./images";
+import type { properties } from "./db/schema";
+
+export type PropertySeed = InferInsertModel<typeof properties>;
+
+// The canonical starting content. `npm run db:seed` upserts these rows; after
+// that Postgres is the source of truth and this file is only a fixture.
+// A few gallery frames double as section imagery — referenced, not re-uploaded.
+export const propertySeed: PropertySeed[] = [
+  {
+    id: "the-arbour-kakkanad",
+    name: "The Arbour",
+    locality: "Kakkanad",
+    city: "Ernakulam",
+    type: "3 & 4 BHK residences",
+    priceLabel: "₹1.85 Cr",
+    priceValue: 18500000,
+    beds: 3,
+    baths: 3,
+    area: "1,840 sqft",
+    status: "Ready to move",
+    summary:
+      "An elevated home in Kakkanad, wrapped in daylight and quiet greenery — minutes from the InfoPark corridor.",
+    amenities: [
+      "Sky lounge",
+      "Infinity edge pool",
+      "Landscaped courtyards",
+      "Concierge desk",
+      "EV charging",
+      "Home automation ready",
+    ],
+    details: [
+      { label: "Configuration", value: "3 & 4 BHK" },
+      { label: "Carpet area", value: "1,840 – 2,410 sqft" },
+      { label: "Floors", value: "G + 18" },
+      { label: "Facing", value: "East / North-east" },
+      { label: "Possession", value: "Ready" },
+      { label: "RERA", value: "On request" },
+    ],
+    gallery: [
+      imagePaths.heroArch,
+      "/images/homes/arbour-02.jpg",
+      imagePaths.storyMorning,
+      imagePaths.storyLiving,
+    ],
+    sortOrder: 0,
+  },
+  {
+    id: "riverstone-villas-marine-drive",
+    name: "Riverstone Villas",
+    locality: "Marine Drive",
+    city: "Kochi",
+    type: "4 BHK waterfront villas",
+    priceLabel: "₹4.20 Cr",
+    priceValue: 42000000,
+    beds: 4,
+    baths: 5,
+    area: "3,650 sqft",
+    status: "New launch",
+    summary:
+      "A limited collection of waterfront villas along the backwaters — private decks, warm stone, and long evening light.",
+    amenities: [
+      "Private plunge pool",
+      "Waterfront deck",
+      "Double-height living",
+      "Staff quarters",
+      "Home theatre",
+      "Landscaped garden",
+    ],
+    details: [
+      { label: "Configuration", value: "4 BHK villa" },
+      { label: "Built-up area", value: "3,650 sqft" },
+      { label: "Plot", value: "5.2 cents" },
+      { label: "Facing", value: "Waterfront" },
+      { label: "Possession", value: "New launch" },
+      { label: "RERA", value: "On request" },
+    ],
+    gallery: [
+      "/images/homes/riverstone-01.jpg",
+      "/images/homes/riverstone-02.jpg",
+      "/images/homes/riverstone-03.jpg",
+      "/images/homes/riverstone-04.jpg",
+    ],
+    sortOrder: 1,
+  },
+  {
+    id: "the-terraces-panampilly",
+    name: "The Terraces",
+    locality: "Panampilly Nagar",
+    city: "Kochi",
+    type: "3 BHK garden apartments",
+    priceLabel: "₹2.35 Cr",
+    priceValue: 23500000,
+    beds: 3,
+    baths: 3,
+    area: "2,120 sqft",
+    status: "Ready to move",
+    summary:
+      "Garden apartments in the heart of Panampilly Nagar — generous terraces, quiet interiors, everything within a walk.",
+    amenities: [
+      "Private terrace",
+      "Rooftop garden",
+      "Community lounge",
+      "Covered parking",
+      "24/7 security",
+      "Rainwater harvesting",
+    ],
+    details: [
+      { label: "Configuration", value: "3 BHK" },
+      { label: "Carpet area", value: "2,120 sqft" },
+      { label: "Floors", value: "G + 9" },
+      { label: "Facing", value: "North" },
+      { label: "Possession", value: "Ready" },
+      { label: "RERA", value: "On request" },
+    ],
+    gallery: [
+      imagePaths.buying,
+      "/images/homes/terraces-02.jpg",
+      "/images/homes/terraces-03.jpg",
+      "/images/homes/terraces-04.jpg",
+    ],
+    sortOrder: 2,
+  },
+  {
+    id: "willow-court-aluva",
+    name: "Willow Court",
+    locality: "Aluva",
+    city: "Ernakulam",
+    type: "2 & 3 BHK apartments",
+    priceLabel: "₹98 L",
+    priceValue: 9800000,
+    beds: 2,
+    baths: 2,
+    area: "1,290 sqft",
+    status: "Under construction",
+    summary:
+      "Considered, well-lit apartments near the metro at Aluva — a calm first home with room to grow.",
+    amenities: [
+      "Clubhouse",
+      "Children's play area",
+      "Fitness studio",
+      "Jogging track",
+      "Multipurpose hall",
+      "Covered parking",
+    ],
+    details: [
+      { label: "Configuration", value: "2 & 3 BHK" },
+      { label: "Carpet area", value: "1,290 – 1,560 sqft" },
+      { label: "Floors", value: "G + 14" },
+      { label: "Facing", value: "East" },
+      { label: "Possession", value: "Dec 2026" },
+      { label: "RERA", value: "On request" },
+    ],
+    gallery: [
+      "/images/homes/willow-01.jpg",
+      "/images/homes/willow-02.jpg",
+      "/images/homes/willow-03.jpg",
+      "/images/homes/willow-04.jpg",
+    ],
+    sortOrder: 3,
+  },
+];

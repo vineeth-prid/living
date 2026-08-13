@@ -8,7 +8,7 @@ import { CtaBand } from "@/components/cta";
 import { Reveal } from "@/components/motion";
 import { Eyebrow } from "@/components/ui";
 import { JsonLd, faqSchema } from "@/components/schema";
-import { properties } from "@/lib/properties";
+import { getProperties } from "@/lib/properties";
 import { site } from "@/lib/site";
 
 const homeFaqs = [
@@ -26,7 +26,8 @@ const homeFaqs = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const properties = await getProperties();
   return (
     <>
       <JsonLd data={faqSchema(homeFaqs)} />
