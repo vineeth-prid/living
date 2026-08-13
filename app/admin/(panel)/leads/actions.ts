@@ -21,6 +21,7 @@ import { fail, requireUser, succeed, type ActionResult } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { newId } from "@/lib/ids";
 import { createLead, linkProperty, recordActivity } from "@/lib/leads";
+import { notifyLeadAssigned } from "@/lib/notify";
 import { visibleTo } from "@/lib/leads.admin";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -312,15 +313,21 @@ export async function assignLead(
   if (!before) return fail("That lead no longer exists.");
 
   let name = "nobody";
+  let assigneeEmail: string | null = null;
   if (employeeId) {
     const [employee] = await db()
-      .select({ fullName: users.fullName, isActive: users.isActive })
+      .select({
+        fullName: users.fullName,
+        email: users.email,
+        isActive: users.isActive,
+      })
       .from(users)
       .where(eq(users.id, employeeId))
       .limit(1);
     if (!employee) return fail("That employee doesn't exist.");
     if (!employee.isActive) return fail("That employee is deactivated.");
     name = employee.fullName;
+    assigneeEmail = employee.email;
   }
 
   await db()
@@ -350,6 +357,20 @@ export async function assignLead(
     before: { assignedToId: before.assignedToId },
     after: { assignedToId: employeeId },
   });
+
+  // Fire-and-forget: an unreachable mail server must not fail an assignment
+  // that already succeeded. Unassigning notifies nobody.
+  if (assigneeEmail && employeeId !== before.assignedToId) {
+    notifyLeadAssigned({
+      leadId: id,
+      reference: before.reference,
+      leadName: before.name,
+      mobile: before.mobile,
+      assigneeEmail,
+      assigneeName: name,
+      assignedByName: actor.fullName,
+    });
+  }
 
   touch(id);
   return succeed(null);

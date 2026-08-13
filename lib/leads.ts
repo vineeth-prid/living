@@ -8,6 +8,7 @@ import {
   properties,
 } from "./db/schema";
 import { newId, nextReference } from "./ids";
+import { notifyWebsiteEnquiry } from "./notify";
 
 // Shared lead-writing core. Both the public enquiry forms and the admin panel
 // come through here, so a lead created by a website visitor and one typed in by
@@ -183,6 +184,28 @@ export async function createLead(input: CreateLeadInput): Promise<{
       leadId: id,
       propertyId,
       actorId: input.createdById ?? null,
+    });
+  }
+
+  // Only website captures notify the team. A lead an employee just typed in
+  // doesn't need to be emailed back to the people who watched them type it.
+  if (!input.createdById) {
+    const [property] = input.propertyIds?.length
+      ? await db()
+          .select({ name: properties.name })
+          .from(properties)
+          .where(eq(properties.id, input.propertyIds[0]))
+          .limit(1)
+      : [];
+
+    notifyWebsiteEnquiry({
+      id,
+      reference,
+      name: input.name,
+      mobile: input.mobile,
+      email: input.email ?? null,
+      message: input.initialMessage ?? null,
+      propertyName: property?.name ?? null,
     });
   }
 

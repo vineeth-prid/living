@@ -15,6 +15,13 @@
       "when": 1786615877426,
       "tag": "0001_overconfident_zaran",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1786621109328,
+      "tag": "0002_fat_jocasta",
+      "breakpoints": true
     }
   ]
 }

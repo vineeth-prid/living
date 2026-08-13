@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  ReceiptIndianRupee,
   Settings,
   Users,
   UserSquare2,
@@ -67,6 +68,7 @@ export function Sidebar({
           {
             heading: "Administration",
             items: [
+              { href: "/admin/expenses", label: "Expenses", icon: ReceiptIndianRupee },
               { href: "/admin/employees", label: "Employees", icon: UserSquare2 },
               { href: "/admin/reports", label: "Reports", icon: ChartNoAxesColumn },
               { href: "/admin/settings", label: "Settings", icon: Settings },

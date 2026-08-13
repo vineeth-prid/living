@@ -545,6 +545,122 @@ export const leadFollowups = pgTable(
 );
 
 // ---------------------------------------------------------------------------
+// Expenses
+//
+// An admin-only ledger. There is no submit/approve workflow: expenses are
+// recorded by administrators and edited in place, with archive rather than
+// delete so history survives.
+// ---------------------------------------------------------------------------
+
+export const PAYMENT_METHODS = [
+  "cash",
+  "bank_transfer",
+  "upi",
+  "card",
+  "cheque",
+  "other",
+] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+// A row rather than a union, same reasoning as lead types: the finance team
+// invents categories without waiting for a deploy.
+export const expenseCategories = pgTable("expense_categories", {
+  key: text("key").primaryKey(),
+  label: text("label").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: text("id").primaryKey(),
+    reference: text("reference"),
+
+    // Paise, not rupees. Storing money as a float invites 0.1 + 0.2 problems
+    // in totals; bigint of the minor unit cannot drift.
+    amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+    currency: text("currency").notNull().default("INR"),
+
+    spentAt: timestamp("spent_at", { withTimezone: true }).notNull(),
+    categoryKey: text("category_key").references(() => expenseCategories.key, {
+      onDelete: "set null",
+    }),
+    vendor: text("vendor"),
+    description: text("description").notNull(),
+    paymentMethod: text("payment_method").$type<PaymentMethod>(),
+    invoiceNumber: text("invoice_number"),
+    taxMinor: bigint("tax_minor", { mode: "number" }),
+    notes: text("notes"),
+
+    // Cost attribution. Both optional — an office electricity bill belongs to
+    // neither. ON DELETE SET NULL: archiving a listing must not delete the
+    // record that money was spent on it.
+    propertyId: text("property_id").references(() => properties.id, {
+      onDelete: "set null",
+    }),
+    leadId: text("lead_id").references(() => leads.id, {
+      onDelete: "set null",
+    }),
+
+    // Bucket-relative key, same convention as property media.
+    receiptKey: text("receipt_key"),
+
+    createdById: text("created_by_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("expenses_reference_idx").on(t.reference),
+    // The list is date-ordered and the reports group by month.
+    index("expenses_spent_at_idx").on(t.spentAt),
+    index("expenses_category_idx").on(t.categoryKey),
+    index("expenses_property_idx").on(t.propertyId),
+    index("expenses_lead_idx").on(t.leadId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Notification outbox
+//
+// Every attempt is recorded, sent or not. Email is the one part of this system
+// that fails silently and invisibly; without a log, "the agent never got the
+// alert" is unanswerable.
+// ---------------------------------------------------------------------------
+
+export const NOTIFICATION_STATUSES = ["sent", "failed", "skipped"] as const;
+export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: text("id").primaryKey(),
+    event: text("event").notNull(), // lead.created, lead.assigned, ...
+    channel: text("channel").notNull().default("email"),
+    recipient: text("recipient").notNull(),
+    subject: text("subject").notNull(),
+    status: text("status").$type<NotificationStatus>().notNull(),
+    error: text("error"),
+    entity: text("entity"),
+    entityId: text("entity_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("notifications_created_idx").on(t.createdAt),
+    index("notifications_entity_idx").on(t.entity, t.entityId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
 // Audit (§37)
 // ---------------------------------------------------------------------------
 

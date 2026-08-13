@@ -154,3 +154,67 @@ Marked in code with `ponytail:` comments.
 - **Notifications** (§36) are not built. The activity and follow-up tables carry
   what a notifier would need — `lead_followups.remindAt` exists and is unused —
   so adding one later doesn't require reshaping the CRM.
+
+---
+
+# Expenses
+
+An **admin-only** ledger at `/admin/expenses`. Employees have no access to it,
+anywhere — not the page, not the actions, not the spend figure on a property.
+
+- Record, edit and archive. No submit/approve workflow: an administrator enters
+  the expense and it is immediately part of the ledger.
+- Amount, tax, date, category, vendor, payment method, invoice number, notes.
+- **Receipt upload** (PDF or image) to the same MinIO bucket, under
+  `/images/receipts/`.
+- **Attribution** to a property and/or a lead, both optional. Overheads carry
+  neither. A listing's page shows total spend against it beside the enquiries
+  it generated.
+- Filters on text, category, method and date range. The totals in the header
+  cover the **whole filtered set**, not the visible page.
+- Archive, never delete (Rule 12). The receipt object is kept too.
+- Categories are rows, managed from Settings, same as lead types and sources.
+
+## Money
+
+Amounts are stored as **paise in a bigint** (`amount_minor`), never as a float.
+Totals are summed in Postgres, so a float rounding error would compound across
+the ledger rather than showing on one row. `toMinor` / `toMajor` convert at the
+edges and `check:security` asserts the round-trip, including the classic
+`1234.565 * 100` case.
+
+# Notifications
+
+Event-driven SMTP via nodemailer. Configured with `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` and `NOTIFY_TEAM_EMAILS`.
+
+| Event | Goes to |
+| --- | --- |
+| Website or property enquiry captured | `NOTIFY_TEAM_EMAILS` (falls back to the public inbox) |
+| Lead assigned or reassigned | The employee it went to |
+
+Three properties hold throughout:
+
+1. **Sending never fails the operation.** Emails are dispatched fire-and-forget
+   after the database work commits. A dead mail server cannot lose a lead or
+   block a form submission.
+2. **Every attempt is recorded** in `notifications` — sent, failed or skipped —
+   with the error. "The agent never got the alert" is answerable.
+3. **Unconfigured SMTP is a skip, not a crash.** The app runs without it and
+   the log shows exactly what wasn't sent.
+
+Settings has a live status panel and a **send-test-email** button that reports
+the real outcome by reading the log back, rather than assuming success.
+
+## What is deliberately not built
+
+**No scheduled notifications.** Follow-up due and overdue reminders need a
+timer, and this has none — that was an explicit decision, not an oversight. The
+Follow-ups page and the workspace counters carry that information instead. If
+you want the digests later, the data is already there: add a token-protected
+route handler that queries `lead_followups` and calls `notify()`, then point a
+cron at it. Nothing about the CRM needs reshaping.
+
+**Sending is sequential and in-process.** Fine for a handful of recipients per
+event. If a notification ever fans out to dozens of addresses, move it to a
+queue rather than widening this loop.

@@ -18,6 +18,7 @@ import {
   inputClass,
 } from "@/components/admin/ui";
 import { dateTime } from "@/components/admin/crm";
+import { expensesByMonth, formatMoney } from "@/lib/expenses";
 
 export const metadata = { title: "Reports" };
 
@@ -36,9 +37,10 @@ export default async function ReportsPage({
   const page = Math.max(1, Number(sp.page ?? 1));
   const entity = sp.entity;
 
-  const [sources, performance, logs] = await Promise.all([
+  const [sources, performance, spendByMonth, logs] = await Promise.all([
     sourceBreakdown({ range }),
     employeePerformance({ range }),
+    expensesByMonth(6),
     db()
       .select({
         id: auditLogs.id,
@@ -64,6 +66,50 @@ export default async function ReportsPage({
       <PageHeader title="Reports" subtitle={`${range.label} · performance and audit trail`} />
 
       <div className="mb-6 grid gap-6 lg:grid-cols-2">
+        <Card
+          title="Spend by month"
+          action={
+            <Link href="/admin/expenses" className="text-xs text-pine-700 hover:underline">
+              Open the ledger
+            </Link>
+          }
+        >
+          {spendByMonth.length === 0 ? (
+            <p className="text-sm text-stone-500">No expenses recorded yet.</p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {spendByMonth.map((m) => {
+                const peak = Math.max(
+                  ...spendByMonth.map((row) => Number(row.amount)),
+                );
+                const width = peak > 0 ? (Number(m.amount) / peak) * 100 : 0;
+                return (
+                  <li key={m.month}>
+                    <div className="mb-1 flex items-baseline justify-between text-xs">
+                      <span className="text-stone-700">{m.month}</span>
+                      <span className="mono text-stone-500">
+                        {formatMoney(Number(m.amount))}
+                        <span className="ml-2 text-stone-400">
+                          {m.entries} entr{m.entries === 1 ? "y" : "ies"}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-stone-100">
+                      <div
+                        className="h-full rounded-full bg-clay-500"
+                        style={{ width: `${Math.max(width, 2)}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="mt-4 text-xs text-stone-500">
+            Last six months, archived entries excluded.
+          </p>
+        </Card>
+
         <Card title="Source performance">
           {sources.length === 0 ? (
             <p className="text-sm text-stone-500">No leads in this range.</p>

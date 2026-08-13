@@ -5,6 +5,7 @@ import { can, requireUser } from "@/lib/auth/dal";
 import { PERMISSIONS } from "@/lib/auth/constants";
 import { getAdminProperty } from "@/lib/properties.admin";
 import { hasStorage } from "@/lib/storage";
+import { formatMoney, propertySpend } from "@/lib/expenses";
 import { db } from "@/lib/db";
 import { leadProperties, leads, auditLogs } from "@/lib/db/schema";
 import {
@@ -57,6 +58,12 @@ export default async function PropertyDetailPage({
     .where(and(eq(auditLogs.entity, "property"), eq(auditLogs.entityId, id)))
     .orderBy(desc(auditLogs.createdAt))
     .limit(10);
+
+  // Admins only — the ledger is not visible to employees anywhere.
+  const spend =
+    user.role === "admin"
+      ? await propertySpend(id)
+      : { amountMinor: 0, entries: 0 };
 
   const action = updateProperty.bind(null, id);
   const publicImages = property.media.filter(
@@ -148,6 +155,27 @@ export default async function PropertyDetailPage({
               </ul>
             )}
           </Card>
+
+          {/* The payoff of tagging expenses to a listing: what it cost sits
+              next to the interest it generated. Admin-only, like the ledger. */}
+          {user.role === "admin" && (
+            <Card title="Spend on this property">
+              <p className="text-2xl font-semibold text-stone-900">
+                {formatMoney(spend.amountMinor)}
+              </p>
+              <p className="mt-1 text-xs text-stone-500">
+                {spend.entries === 0
+                  ? "No expenses recorded against this listing."
+                  : `Across ${spend.entries} expense${spend.entries === 1 ? "" : "s"}.`}
+              </p>
+              <Link
+                href={`/admin/expenses?propertyId=${id}`}
+                className="mt-3 inline-block text-xs text-pine-700 hover:underline"
+              >
+                See the entries
+              </Link>
+            </Card>
+          )}
 
           <Card title="History">
             {history.length === 0 ? (

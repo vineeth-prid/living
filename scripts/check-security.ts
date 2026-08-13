@@ -14,6 +14,8 @@ import { hashPassword, verifyPassword } from "../lib/auth/password";
 import { normaliseMobile } from "../lib/leads";
 import { funnelFrom } from "../lib/analytics";
 import { priceLabelFor, publishBlockers } from "../lib/validation/property";
+import { formatMoney, toMajor, toMinor } from "../lib/expenses";
+import { hasSmtp, teamRecipients } from "../lib/notify";
 
 let checks = 0;
 const check = (name: string, fn: () => void | Promise<void>) => {
@@ -177,6 +179,59 @@ async function main() {
     assert.equal(priceLabelFor(9800000), "₹98 L");
     assert.equal(priceLabelFor(0), undefined);
     assert.equal(priceLabelFor(undefined), undefined);
+  });
+
+  // --- money: paise in, rupees out ------------------------------------------
+  // Expenses are summed in SQL, so a rounding error here compounds across the
+  // whole ledger rather than showing up on one row.
+  await check("rupees convert to paise without float drift", () => {
+    assert.equal(toMinor(12500), 1250000);
+    assert.equal(toMinor(12500.5), 1250050);
+    assert.equal(toMinor(0.1) + toMinor(0.2), toMinor(0.3));
+    // The classic float trap: 1234.565 * 100 is 123456.49999999999.
+    assert.equal(toMinor(1234.565), 123457);
+    assert.equal(Number.isInteger(toMinor(99.999)), true);
+  });
+
+  await check("paise round-trip back to the same rupee value", () => {
+    for (const rupees of [0.01, 1, 99.99, 12500.5, 1_00_00_000]) {
+      assert.equal(toMajor(toMinor(rupees)), rupees);
+    }
+  });
+
+  await check("money formatting never prints a bare number or NaN", () => {
+    assert.match(formatMoney(1250000), /12,500/);
+    assert.equal(formatMoney(null), "—");
+    assert.equal(formatMoney(undefined), "—");
+    assert.match(formatMoney(0), /0/);
+  });
+
+  // --- notifications --------------------------------------------------------
+  await check("team recipients parse a comma-separated list", () => {
+    process.env.NOTIFY_TEAM_EMAILS = "a@x.com, b@x.com ,, c@x.com";
+    assert.deepEqual(teamRecipients(), ["a@x.com", "b@x.com", "c@x.com"]);
+    delete process.env.NOTIFY_TEAM_EMAILS;
+    // Falls back to the public inbox rather than sending to nobody.
+    assert.ok(teamRecipients().length >= 1);
+  });
+
+  await check("SMTP is reported as unconfigured when host or from is missing", () => {
+    const host = process.env.SMTP_HOST;
+    const from = process.env.SMTP_FROM;
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_FROM;
+    assert.equal(hasSmtp(), false);
+
+    process.env.SMTP_HOST = "smtp.example.com";
+    assert.equal(hasSmtp(), false, "host alone must not count as configured");
+
+    process.env.SMTP_FROM = "Living <x@example.com>";
+    assert.equal(hasSmtp(), true);
+
+    if (host === undefined) delete process.env.SMTP_HOST;
+    else process.env.SMTP_HOST = host;
+    if (from === undefined) delete process.env.SMTP_FROM;
+    else process.env.SMTP_FROM = from;
   });
 
   console.log(`\n${checks} checks passed`);

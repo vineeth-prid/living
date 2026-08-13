@@ -2,7 +2,7 @@
 
 import { useActionState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
-import { addTaxonomy, toggleTaxonomy } from "./actions";
+import { addTaxonomy, toggleTaxonomy, type TaxonomyKind } from "./actions";
 import {
   Button,
   Card,
@@ -28,7 +28,7 @@ export function TaxonomyEditor({
   title,
   entries,
 }: {
-  kind: "type" | "source";
+  kind: TaxonomyKind;
   title: string;
   entries: Entry[];
 }) {
