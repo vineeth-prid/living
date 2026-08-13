@@ -1,46 +1,207 @@
-import type { InferSelectModel } from "drizzle-orm";
-import { asc } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db, hasDatabase } from "./db";
-import { properties as propertiesTable } from "./db/schema";
+import {
+  properties as propertiesTable,
+  propertyMedia,
+} from "./db/schema";
 import { propertySeed } from "./properties.seed";
 import { cdnUrl } from "./images";
 
 export type { PropertyDetail, PropertyStatus } from "./db/schema";
-export type Property = InferSelectModel<typeof propertiesTable>;
 
-// Rows store bucket-relative paths; components need fetchable URLs.
-function toProperty(row: Property): Property {
-  return { ...row, gallery: row.gallery.map(cdnUrl) };
+/**
+ * The ONLY property shape the public website ever sees (§41).
+ *
+ * This is a hand-written type rather than `InferSelectModel<typeof properties>`
+ * on purpose: inferring from the table would silently absorb every internal
+ * column added later — finalPrice, sellerContact, internalNotes — into public
+ * pages, OG images and JSON-LD. Adding a field here has to be a deliberate act.
+ */
+export type Property = {
+  id: string;
+  name: string;
+  locality: string;
+  city: string;
+  type: string;
+  priceLabel: string;
+  priceValue: number;
+  beds: number;
+  baths: number;
+  area: string;
+  status: "Ready to move" | "Under construction" | "New launch";
+  summary: string;
+  amenities: string[];
+  details: { label: string; value: string }[];
+  gallery: string[];
+  reference: string | null;
+  description: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  sortOrder: number;
+  updatedAt: Date;
+};
+
+// The allowlist, expressed as a Drizzle projection. Postgres is never asked for
+// the internal columns at all, so they cannot leak through a spread, a
+// serialiser, an RSC payload or a console.log downstream.
+const publicColumns = {
+  id: propertiesTable.id,
+  name: propertiesTable.name,
+  locality: propertiesTable.locality,
+  city: propertiesTable.city,
+  type: propertiesTable.type,
+  priceLabel: propertiesTable.priceLabel,
+  priceValue: propertiesTable.priceValue,
+  beds: propertiesTable.beds,
+  baths: propertiesTable.baths,
+  area: propertiesTable.area,
+  status: propertiesTable.status,
+  summary: propertiesTable.summary,
+  amenities: propertiesTable.amenities,
+  details: propertiesTable.details,
+  gallery: propertiesTable.gallery,
+  reference: propertiesTable.reference,
+  description: propertiesTable.description,
+  seoTitle: propertiesTable.seoTitle,
+  seoDescription: propertiesTable.seoDescription,
+  sortOrder: propertiesTable.sortOrder,
+  updatedAt: propertiesTable.updatedAt,
+} as const;
+
+/**
+ * Rule 2: published AND explicitly public AND not archived. Both flags must
+ * hold — publishing sets them together, but unpublishing only clears isPublic,
+ * so a listing can be pulled from the site without losing its workflow state.
+ */
+const isVisible = and(
+  eq(propertiesTable.workflowStatus, "published"),
+  eq(propertiesTable.isPublic, true),
+  isNull(propertiesTable.deletedAt),
+);
+
+/** Public, ordered image URLs from property_media, falling back to `gallery`. */
+async function galleryFor(ids: string[]): Promise<Map<string, string[]>> {
+  const byProperty = new Map<string, string[]>();
+  if (ids.length === 0) return byProperty;
+
+  // One query for the whole page of listings — no N+1.
+  const rows = await db()
+    .select({
+      propertyId: propertyMedia.propertyId,
+      storageKey: propertyMedia.storageKey,
+    })
+    .from(propertyMedia)
+    .where(
+      and(
+        inArray(propertyMedia.propertyId, ids),
+        eq(propertyMedia.kind, "image"),
+        eq(propertyMedia.isPublic, true),
+      ),
+    )
+    .orderBy(
+      desc(propertyMedia.isPrimary),
+      asc(propertyMedia.sortOrder),
+      asc(propertyMedia.createdAt),
+    );
+
+  for (const row of rows) {
+    const list = byProperty.get(row.propertyId) ?? [];
+    list.push(cdnUrl(row.storageKey));
+    byProperty.set(row.propertyId, list);
+  }
+  return byProperty;
 }
 
-export async function getProperties(): Promise<Property[]> {
+type PublicRow = Omit<Property, "gallery"> & { gallery: string[] };
+
+function withGallery(row: PublicRow, media: string[] | undefined): Property {
+  return {
+    ...row,
+    // Seeded listings predate property_media and still carry bucket paths in
+    // the legacy `gallery` column.
+    gallery: media?.length ? media : row.gallery.map(cdnUrl),
+  };
+}
+
+function seedFallback(): Property[] {
   // ponytail: fixture fallback so a fresh clone (and `next build` in CI) works
   // before Postgres is wired. Delete this branch once DATABASE_URL is set
   // everywhere — it can only ever serve the seed content, never stale prod data.
-  if (!hasDatabase()) {
-    console.warn(
-      "[properties] DATABASE_URL unset — serving seed fixtures, not Postgres.",
-    );
-    const now = new Date();
-    return propertySeed.map((p, i) =>
-      toProperty({
-        ...p,
-        sortOrder: p.sortOrder ?? i,
-        createdAt: now,
-        updatedAt: now,
-      } as Property),
-    );
-  }
+  console.warn(
+    "[properties] DATABASE_URL unset — serving seed fixtures, not Postgres.",
+  );
+  return propertySeed.map((p, i) => ({
+    id: p.id,
+    name: p.name,
+    locality: p.locality,
+    city: p.city,
+    type: p.type,
+    priceLabel: p.priceLabel,
+    priceValue: p.priceValue,
+    beds: p.beds,
+    baths: p.baths,
+    area: p.area,
+    status: p.status,
+    summary: p.summary,
+    amenities: [...p.amenities],
+    details: [...p.details],
+    gallery: [...p.gallery].map(cdnUrl),
+    reference: p.reference ?? null,
+    description: p.description ?? null,
+    seoTitle: null,
+    seoDescription: null,
+    sortOrder: p.sortOrder ?? i,
+    updatedAt: new Date(),
+  }));
+}
+
+export async function getProperties(): Promise<Property[]> {
+  if (!hasDatabase()) return seedFallback();
 
   const rows = await db()
-    .select()
+    .select(publicColumns)
     .from(propertiesTable)
+    .where(isVisible)
     .orderBy(asc(propertiesTable.sortOrder), asc(propertiesTable.name));
 
-  return rows.map(toProperty);
+  const media = await galleryFor(rows.map((r) => r.id));
+  return rows.map((row) => withGallery(row, media.get(row.id)));
 }
 
 export async function getProperty(id: string): Promise<Property | undefined> {
-  const all = await getProperties();
-  return all.find((p) => p.id === id);
+  if (!hasDatabase()) return seedFallback().find((p) => p.id === id);
+
+  const [row] = await db()
+    .select(publicColumns)
+    .from(propertiesTable)
+    .where(and(eq(propertiesTable.id, id), isVisible))
+    .limit(1);
+
+  if (!row) return undefined;
+  const media = await galleryFor([row.id]);
+  return withGallery(row, media.get(row.id));
+}
+
+/** Slugs for sitemap and static params — published listings only. */
+export async function getPropertySlugs(): Promise<
+  { id: string; updatedAt: Date }[]
+> {
+  if (!hasDatabase()) {
+    return seedFallback().map((p) => ({ id: p.id, updatedAt: p.updatedAt }));
+  }
+  return db()
+    .select({ id: propertiesTable.id, updatedAt: propertiesTable.updatedAt })
+    .from(propertiesTable)
+    .where(isVisible);
+}
+
+/** Listings a lead can be attached to from the public enquiry form. */
+export async function publicPropertyExists(id: string): Promise<boolean> {
+  if (!hasDatabase()) return seedFallback().some((p) => p.id === id);
+  const [row] = await db()
+    .select({ n: sql<number>`1` })
+    .from(propertiesTable)
+    .where(and(eq(propertiesTable.id, id), isVisible))
+    .limit(1);
+  return Boolean(row);
 }

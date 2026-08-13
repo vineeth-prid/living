@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check } from "lucide-react";
-import { site, mailLink } from "@/lib/site";
+import { site } from "@/lib/site";
+import { submitEnquiry, type EnquiryState } from "@/app/actions/enquiry";
 
-// ponytail: no backend — compose a prefilled email via mailto. Swap for a
-// real POST /api/contact (or form service) when submissions need to be stored.
+// Submissions now become CRM leads (§31) instead of opening a mail client.
+// The markup below is unchanged — same fields, same classes, same animation.
 const interests = [
   "Buying a home",
   "Selling a property",
@@ -16,34 +17,30 @@ const interests = [
 ];
 
 export function ContactForm() {
-  const [sent, setSent] = useState(false);
+  const [state, formAction] = useActionState<EnquiryState, FormData>(
+    submitEnquiry,
+    {},
+  );
+  const sent = Boolean(state.ok);
+  const [attribution, setAttribution] = useState({
+    landingPage: "",
+    referrerUrl: "",
+    utmSource: "",
+    utmMedium: "",
+    utmCampaign: "",
+  });
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget);
-    const name = String(f.get("name") ?? "");
-    const email = String(f.get("email") ?? "");
-    const phone = String(f.get("phone") ?? "");
-    const interest = String(f.get("interest") ?? "");
-    const message = String(f.get("message") ?? "");
-    const subject = `New enquiry — ${interest || "Living"}`;
-    const body = [
-      `Name: ${name}`,
-      `Email: ${email}`,
-      `Phone: ${phone}`,
-      `Interest: ${interest}`,
-      "",
-      message,
-    ].join("\n");
-    // mailLink is a mailto: URL, not an internal route — router.push() cannot
-    // hand off to the mail client. The rule (new in eslint-config-next 16.3)
-    // only means to catch relative in-app destinations.
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = `${mailLink}?subject=${encodeURIComponent(
-      subject,
-    )}&body=${encodeURIComponent(body)}`;
-    setSent(true);
-  }
+  // Browser-only values, read after mount so server and client markup match.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setAttribution({
+      landingPage: window.location.pathname,
+      referrerUrl: document.referrer.slice(0, 500),
+      utmSource: params.get("utm_source") ?? "",
+      utmMedium: params.get("utm_medium") ?? "",
+      utmCampaign: params.get("utm_campaign") ?? "",
+    });
+  }, []);
 
   const field =
     "mt-2 w-full rounded-[12px] border border-stone-300 bg-page px-4 py-3 text-ink outline-none transition focus:border-pine-500 focus:ring-[3px] focus:ring-pine-500/25";
@@ -66,29 +63,46 @@ export function ContactForm() {
               Thank you — that's on its way.
             </h3>
             <p className="max-w-sm leading-relaxed text-body">
-              Your email client should have opened with your message ready to
-              send. Prefer to talk now? Call us on{" "}
+              We have your message and someone will come back to you within one
+              business day. Prefer to talk now? Call us on{" "}
               <a href={`tel:${site.phoneRaw}`} className="text-pine-700 underline underline-offset-4">
                 {site.phone}
               </a>
               .
             </p>
-            <button
-              type="button"
-              onClick={() => setSent(false)}
-              className="mt-2 text-pine-700 underline-offset-4 hover:underline"
-            >
-              Send another message
-            </button>
+            {state.reference && (
+              <p className="mono text-xs text-muted">
+                Reference {state.reference}
+              </p>
+            )}
           </motion.div>
         ) : (
           <motion.form
             key="form"
-            onSubmit={handleSubmit}
+            action={formAction}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             className="flex flex-col gap-5"
           >
+            {state.error && (
+              <p role="alert" className="rounded-[10px] bg-[#fbeceb] px-3 py-2 text-sm text-[var(--color-danger)]">
+                {state.error}
+              </p>
+            )}
+            <input type="hidden" name="landingPage" value={attribution.landingPage} />
+            <input type="hidden" name="referrerUrl" value={attribution.referrerUrl} />
+            <input type="hidden" name="utmSource" value={attribution.utmSource} />
+            <input type="hidden" name="utmMedium" value={attribution.utmMedium} />
+            <input type="hidden" name="utmCampaign" value={attribution.utmCampaign} />
+            {/* Honeypot — hidden from people, irresistible to bots. */}
+            <input
+              type="text"
+              name="company"
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              className="absolute h-0 w-0 overflow-hidden opacity-0"
+            />
             <div className="grid gap-5 sm:grid-cols-2">
               <label className="block">
                 <span className={label}>Your name</span>
@@ -96,7 +110,9 @@ export function ContactForm() {
               </label>
               <label className="block">
                 <span className={label}>Phone</span>
-                <input name="phone" type="tel" autoComplete="tel" className={field} placeholder="+91 …" />
+                {/* Named `mobile` and required: leads.mobile is NOT NULL, and a
+                    CRM lead nobody can call isn't a lead. */}
+                <input name="mobile" type="tel" required autoComplete="tel" className={field} placeholder="+91 …" />
               </label>
             </div>
             <label className="block">
