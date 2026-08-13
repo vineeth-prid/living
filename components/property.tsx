@@ -11,10 +11,11 @@ import {
   Bath,
   Maximize,
   Check,
+  ArrowRight,
 } from "lucide-react";
 import Image from "next/image";
 import type { Property } from "@/lib/properties";
-import { ContactActions } from "./ui";
+import { Button, ContactActions } from "./ui";
 import { Stagger, StaggerItem, LiftCard } from "./motion";
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
@@ -223,6 +224,14 @@ function PropertyDialog({
               <p className="mt-1 text-sm text-muted">{property.area}</p>
               <div className="mt-6 flex flex-col gap-3">
                 <ContactActions message={enquiry} />
+                {/* The only route from the site into the full listing page,
+                    whose enquiry form creates a CRM lead already attached to
+                    this property. Without it the page is reachable only from
+                    the sitemap. */}
+                <Button href={`/homes/${property.id}`} variant="ghost">
+                  View full details &amp; enquire
+                  <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
+                </Button>
               </div>
               <p className="mt-4 text-xs leading-relaxed text-muted">
                 Speak directly with a Living property expert. No pressure — just
