@@ -6,7 +6,7 @@ import {
   getLead,
   propertyPickerOptions,
 } from "@/lib/leads.admin";
-import { Card, PageHeader, cx } from "@/components/admin/ui";
+import { Card, LinkButton, PageHeader, cx } from "@/components/admin/ui";
 import {
   PriorityTag,
   StatusBadge,
@@ -55,6 +55,9 @@ export default async function LeadDetailPage({
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={lead.status} />
             <PriorityTag priority={lead.priority} />
+            <LinkButton href={`/admin/leads/${lead.id}/edit`} size="sm">
+              Edit details
+            </LinkButton>
           </div>
         }
       />
