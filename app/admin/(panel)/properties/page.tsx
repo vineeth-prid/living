@@ -9,13 +9,14 @@ import { WORKFLOW_STATUSES } from "@/lib/db/schema";
 import {
   Badge,
   EmptyState,
+  FilterBar,
   LinkButton,
   PageHeader,
   TableWrap,
   Td,
   Th,
   cx,
-  inputClass,
+  filterClass,
 } from "@/components/admin/ui";
 import { PropertyRowActions } from "./row-actions";
 
@@ -74,25 +75,23 @@ export default async function PropertiesPage({
         title="Properties"
         subtitle={`${total} listing${total === 1 ? "" : "s"}`}
         action={
-          <LinkButton href="/admin/properties/new" variant="primary">
-            Add property
-          </LinkButton>
+          <div className="flex gap-2">
+            <LinkButton href="/admin/properties/import">Import CSV</LinkButton>
+            <LinkButton href="/admin/properties/new" variant="primary">
+              Add property
+            </LinkButton>
+          </div>
         }
       />
 
-      {/* A GET form: filters live in the URL, so a filtered view is
-          shareable and the back button behaves. */}
-      <form
-        method="get"
-        className="mb-5 flex flex-wrap items-end gap-3 rounded-[14px] border border-stone-200 bg-white p-4"
-      >
+      <FilterBar clearHref="/admin/properties">
         <input
           name="q"
           defaultValue={sp.q ?? ""}
-          placeholder="Search title, reference, locality…"
-          className={cx(inputClass, "w-full sm:w-72")}
+          placeholder="Title, reference, locality…"
+          className={cx(filterClass, "w-56")}
         />
-        <select name="status" defaultValue={filters.status} className={cx(inputClass, "w-auto")}>
+        <select name="status" defaultValue={filters.status} className={filterClass}>
           <option value="all">Any status</option>
           {WORKFLOW_STATUSES.map((s) => (
             <option key={s} value={s} className="capitalize">
@@ -100,39 +99,30 @@ export default async function PropertiesPage({
             </option>
           ))}
         </select>
-        <select name="kind" defaultValue={sp.kind ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="kind" defaultValue={sp.kind ?? ""} className={filterClass}>
           <option value="">Any type</option>
           <option value="residential">Residential</option>
           <option value="commercial">Commercial</option>
         </select>
-        <select name="listingType" defaultValue={sp.listingType ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="listingType" defaultValue={sp.listingType ?? ""} className={filterClass}>
           <option value="">Sale or rental</option>
           <option value="sale">Sale</option>
           <option value="rental">Rental</option>
           <option value="both">Both</option>
         </select>
-        <select name="city" defaultValue={sp.city ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="city" defaultValue={sp.city ?? ""} className={filterClass}>
           <option value="">Any city</option>
           {cities.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <select name="sort" defaultValue={filters.sort} className={cx(inputClass, "w-auto")}>
+        <select name="sort" defaultValue={filters.sort} className={filterClass}>
           <option value="recent">Newest</option>
           <option value="updated">Recently updated</option>
           <option value="price_desc">Price, high to low</option>
           <option value="price_asc">Price, low to high</option>
         </select>
-        <button
-          type="submit"
-          className="rounded-[10px] bg-pine-600 px-4 py-2 text-sm font-medium text-white hover:bg-pine-700"
-        >
-          Apply
-        </button>
-        <Link href="/admin/properties" className="text-sm text-stone-500 hover:text-stone-800">
-          Clear
-        </Link>
-      </form>
+      </FilterBar>
 
       {rows.length === 0 ? (
         <EmptyState

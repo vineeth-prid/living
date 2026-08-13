@@ -1,6 +1,7 @@
 import { Client } from "minio";
 import { randomBytes } from "node:crypto";
 import { extname } from "node:path";
+import { Readable } from "node:stream";
 
 // Write side of the existing media architecture. Reads keep going through
 // NEXT_PUBLIC_IMAGE_CDN exactly as before (lib/images.ts) — this only adds the
@@ -106,6 +107,31 @@ export async function uploadObject(
   });
 
   return key;
+}
+
+/**
+ * Reads an object back out. Returns null when it isn't there, so a row
+ * pointing at a deleted file renders a 404 rather than a 500.
+ */
+export async function getObject(key: string): Promise<{
+  body: ReadableStream<Uint8Array>;
+  contentType: string;
+  size: number;
+} | null> {
+  const name = key.replace(/^\/+/, "");
+  try {
+    const stat = await client().statObject(bucket(), name);
+    const stream = await client().getObject(bucket(), name);
+    return {
+      body: Readable.toWeb(stream) as ReadableStream<Uint8Array>,
+      contentType: stat.metaData?.["content-type"] ?? "application/octet-stream",
+      size: stat.size,
+    };
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (code === "NoSuchKey" || code === "NotFound") return null;
+    throw error;
+  }
 }
 
 export async function deleteObject(key: string): Promise<void> {

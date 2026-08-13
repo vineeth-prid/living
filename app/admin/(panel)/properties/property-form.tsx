@@ -21,8 +21,26 @@ const STEPS = [
   "Location",
   "Land & building",
   "Financial",
-  "SEO",
+  "Photos",
 ] as const;
+
+/**
+ * Which step owns each field. The steps are hidden with CSS, so an error on a
+ * step you aren't looking at was invisible except as a line of text at the top
+ * — this drives the marker on the tab and the jump link.
+ */
+const STEP_OF: Record<string, number> = {
+  name: 0, kind: 0, listingType: 0, type: 0, status: 0, summary: 0, description: 0,
+  locality: 1, city: 1, addressLine: 1, addressIsPublic: 1, district: 1, state: 1,
+  pincode: 1, country: 1, latitude: 1, longitude: 1,
+  landArea: 2, landAreaUnit: 2, surveyNumber: 2, roadAccess: 2, facing: 2,
+  boundaryNotes: 2, hasBuilding: 2, builtUpArea: 2, builtUpAreaUnit: 2, floors: 2,
+  units: 2, beds: 2, baths: 2, balconies: 2, parking: 2, propertyAge: 2,
+  furnishedStatus: 2, area: 2, amenities: 2, commercialKind: 2, floorNumber: 2,
+  occupancy: 2, suitableFor: 2, leasePotential: 2,
+  askingPrice: 3, priceLabel: 3, rentalIncome: 3, rentalFrequency: 3,
+  rentalYield: 3, finalPrice: 3, internalNotes: 3, sellerName: 3, sellerContact: 3,
+};
 
 const AREA_UNIT_OPTIONS = [
   { value: "cent", label: "Cent" },
@@ -45,6 +63,7 @@ export function PropertyForm({
   initial,
   submitLabel,
   canSetFinalPrice,
+  showPhotos = false,
 }: {
   action: (
     prev: ActionResult<{ id: string }> | null,
@@ -53,10 +72,13 @@ export function PropertyForm({
   initial?: Record<string, unknown>;
   submitLabel: string;
   canSetFinalPrice: boolean;
+  /** Only on the new-property form; editing has the full media manager. */
+  showPhotos?: boolean;
 }) {
   const [state, formAction] = useActionState(action, null);
   const [step, setStep] = useState(0);
   const [kind, setKind] = useState<string>(String(initial?.kind ?? "residential"));
+  const [photoCount, setPhotoCount] = useState(0);
   const [hasBuilding, setHasBuilding] = useState<boolean>(
     initial?.hasBuilding === undefined ? true : Boolean(initial.hasBuilding),
   );
@@ -78,39 +100,57 @@ export function PropertyForm({
         <ErrorText>
           {state.error}
           {errors && (
-            <span className="mt-1 block text-xs">
-              {Object.entries(errors)
-                .map(([field, messages]) => `${field}: ${messages?.[0]}`)
-                .join(" · ")}
+            <span className="mt-1.5 block text-xs">
+              {Object.entries(errors).map(([field, messages]) => (
+                <button
+                  key={field}
+                  type="button"
+                  onClick={() => setStep(STEP_OF[field] ?? 0)}
+                  className="mr-3 underline decoration-dotted underline-offset-2"
+                >
+                  {STEPS[STEP_OF[field] ?? 0]}: {messages?.[0]}
+                </button>
+              ))}
             </span>
           )}
         </ErrorText>
       )}
 
       <nav className="flex flex-wrap gap-1 rounded-[12px] border border-stone-200 bg-white p-1.5">
-        {STEPS.map((label, i) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => setStep(i)}
-            className={cx(
-              "flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-xs font-medium transition",
-              step === i
-                ? "bg-pine-600 text-white"
-                : "text-stone-600 hover:bg-stone-100",
-            )}
-          >
-            <span
+        {STEPS.map((label, i) => {
+          const faulty = Object.keys(errors ?? {}).some(
+            (field) => (STEP_OF[field] ?? 0) === i,
+          );
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setStep(i)}
               className={cx(
-                "flex h-4 w-4 items-center justify-center rounded-full text-[10px]",
-                step === i ? "bg-white/20" : "bg-stone-200 text-stone-600",
+                "flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-xs font-medium transition",
+                step === i
+                  ? "bg-pine-600 text-white"
+                  : faulty
+                    ? "text-[var(--color-danger)] hover:bg-stone-100"
+                    : "text-stone-600 hover:bg-stone-100",
               )}
             >
-              {i + 1}
-            </span>
-            {label}
-          </button>
-        ))}
+              <span
+                className={cx(
+                  "flex h-4 w-4 items-center justify-center rounded-full text-[10px]",
+                  step === i
+                    ? "bg-white/20"
+                    : faulty
+                      ? "bg-[#fbeceb] text-[var(--color-danger)]"
+                      : "bg-stone-200 text-stone-600",
+                )}
+              >
+                {faulty ? "!" : i + 1}
+              </span>
+              {label}
+            </button>
+          );
+        })}
       </nav>
 
       {/* 1 — Basics */}
@@ -123,7 +163,7 @@ export function PropertyForm({
               error={errors?.name?.[0]}
               className="sm:col-span-2"
             >
-              <input name="name" required defaultValue={val("name")} className={inputClass} placeholder="The Arbour" />
+              <input name="name" defaultValue={val("name")} className={inputClass} placeholder="The Arbour" />
             </Field>
 
             <Field label="Property type" required>
@@ -147,7 +187,7 @@ export function PropertyForm({
             </Field>
 
             <Field label="Configuration" required error={errors?.type?.[0]} hint="Shown on the public card.">
-              <input name="type" required defaultValue={val("type")} className={inputClass} placeholder="3 & 4 BHK residences" />
+              <input name="type" defaultValue={val("type")} className={inputClass} placeholder="3 & 4 BHK residences" />
             </Field>
 
             <Field label="Possession" required hint="The label the website badge shows.">
@@ -159,7 +199,7 @@ export function PropertyForm({
             </Field>
 
             <Field label="Summary" required error={errors?.summary?.[0]} className="sm:col-span-2" hint="One or two lines — this is the card copy.">
-              <textarea name="summary" required rows={2} defaultValue={val("summary")} className={cx(inputClass, "resize-y")} />
+              <textarea name="summary" rows={2} defaultValue={val("summary")} className={cx(inputClass, "resize-y")} />
             </Field>
 
             <Field label="Full description" className="sm:col-span-2">
@@ -174,10 +214,10 @@ export function PropertyForm({
         <Card title="Location">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Area / locality" required error={errors?.locality?.[0]}>
-              <input name="locality" required defaultValue={val("locality")} className={inputClass} placeholder="Kakkanad" />
+              <input name="locality" defaultValue={val("locality")} className={inputClass} placeholder="Kakkanad" />
             </Field>
             <Field label="City" required error={errors?.city?.[0]}>
-              <input name="city" required defaultValue={val("city")} className={inputClass} placeholder="Ernakulam" />
+              <input name="city" defaultValue={val("city")} className={inputClass} placeholder="Ernakulam" />
             </Field>
             <Field label="Address" className="sm:col-span-2">
               <input name="addressLine" defaultValue={val("addressLine")} className={inputClass} />
@@ -375,21 +415,46 @@ export function PropertyForm({
         )}
       </div>
 
-      {/* 5 — SEO */}
+      {/* 5 — Photos */}
       <div className={stepPane(4)}>
-        <Card title="SEO">
-          <div className="grid gap-4">
-            <Field label="SEO title" hint="Falls back to the property title.">
-              <input name="seoTitle" defaultValue={val("seoTitle")} className={inputClass} />
-            </Field>
-            <Field label="Meta description" hint="Falls back to the summary. Around 155 characters.">
-              <textarea name="seoDescription" rows={3} defaultValue={val("seoDescription")} className={cx(inputClass, "resize-y")} />
-            </Field>
-          </div>
+        <Card title="Photos">
+          {showPhotos ? (
+            <>
+              <Field
+                label="Images"
+                hint="JPEG, PNG, WebP or AVIF, up to 12 MB each. The first one becomes the cover."
+              >
+                <input
+                  type="file"
+                  name="files"
+                  multiple
+                  accept="image/jpeg,image/png,image/webp,image/avif"
+                  onChange={(e) =>
+                    setPhotoCount(e.currentTarget.files?.length ?? 0)
+                  }
+                  className={cx(
+                    inputClass,
+                    "file:mr-3 file:rounded file:border-0 file:bg-stone-200 file:px-3 file:py-1 file:text-xs",
+                  )}
+                />
+              </Field>
+              {photoCount > 0 && (
+                <p className="mt-2 text-xs text-stone-500">
+                  {photoCount} file{photoCount === 1 ? "" : "s"} will be uploaded
+                  when you save.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-stone-500">
+              Use the media panel below the form — it can reorder, set the cover
+              and mark images internal, which a plain file box can&apos;t.
+            </p>
+          )}
           <p className="mt-4 flex items-start gap-2 text-xs text-stone-500">
             <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-pine-600" />
-            Photos and publishing are handled on the property page after saving —
-            media needs a property to attach to.
+            Search title and meta description are generated from the property
+            details on every save — there is nothing to fill in for SEO.
           </p>
         </Card>
       </div>

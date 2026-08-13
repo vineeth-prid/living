@@ -20,7 +20,13 @@ import {
   priceLabelFor,
   propertySchema,
   publishBlockers,
+  seoFor,
 } from "@/lib/validation/property";
+import {
+  mapHeaders,
+  rowToFormData,
+} from "@/lib/validation/property-import";
+import { parseCsv } from "@/lib/csv";
 import { latestPropertyReference } from "@/lib/properties.admin";
 import { deleteObject, uploadObject, validateUpload } from "@/lib/storage";
 
@@ -44,6 +50,74 @@ function parse(formData: FormData) {
       .map((v) => v.trim())
       .filter(Boolean),
   });
+}
+
+/**
+ * Uploads files and writes their property_media rows, appending after whatever
+ * is already there. Shared by the media panel and by the create form's own
+ * photo picker, so both produce identical rows — sort order, primary flag and
+ * the internal-by-default rule for documents included.
+ *
+ * Returns an error string if any file is rejected; nothing is uploaded in that
+ * case, so a bad third file doesn't leave two orphans in the bucket.
+ */
+async function attachMedia(
+  propertyId: string,
+  files: File[],
+  kind: (typeof MEDIA_KINDS)[number],
+): Promise<string | null> {
+  if (!files.length) return null;
+
+  for (const file of files) {
+    const error = validateUpload(file, kind);
+    if (error) return error;
+  }
+
+  const [{ maxOrder }] = await db()
+    .select({ maxOrder: sql<number>`coalesce(max(${propertyMedia.sortOrder}), -1)::int` })
+    .from(propertyMedia)
+    .where(eq(propertyMedia.propertyId, propertyId));
+
+  const [{ existing }] = await db()
+    .select({ existing: sql<number>`count(*)::int` })
+    .from(propertyMedia)
+    .where(and(eq(propertyMedia.propertyId, propertyId), eq(propertyMedia.kind, "image")));
+
+  let order = maxOrder;
+  let imageIndex = existing;
+
+  for (const file of files) {
+    // Must stay under /images/: next.config.ts allows the image optimizer to
+    // fetch `${NEXT_PUBLIC_IMAGE_CDN}/images/**` and nothing else. Uploading
+    // anywhere else produces URLs next/image rejects with a 400.
+    const key = await uploadObject(file, `images/properties/${propertyId}`);
+    order += 1;
+    await db()
+      .insert(propertyMedia)
+      .values({
+        id: newId(),
+        propertyId,
+        kind,
+        storageKey: key,
+        // Documents and sketches are internal by default (§10).
+        isPublic: kind === "image" || kind === "floor_plan",
+        isPrimary: kind === "image" && imageIndex === 0,
+        sortOrder: order,
+        sizeBytes: file.size,
+        contentType: file.type,
+      });
+    if (kind === "image") imageIndex += 1;
+  }
+
+  return null;
+}
+
+/** The files a form actually carries, ignoring the empty part an untouched
+ *  `<input type="file">` still submits. */
+function filesFrom(formData: FormData): File[] {
+  return formData
+    .getAll("files")
+    .filter((f): f is File => f instanceof File && f.size > 0);
 }
 
 /** Slug collisions get a numeric suffix rather than failing the save. */
@@ -72,9 +146,19 @@ export async function createProperty(
   }
   const input = parsed.data;
 
+  // Files are checked before the row is written, so a rejected photo doesn't
+  // leave a half-made listing behind for the user to find and delete.
+  const files = filesFrom(formData);
+  for (const file of files) {
+    const error = validateUpload(file, "image");
+    if (error) return fail(error);
+  }
+
   const id = await uniqueId(slugify(input.name, input.locality));
   const reference = nextReference("LIV", await latestPropertyReference());
   const askingPrice = input.askingPrice ?? 0;
+  const priceLabel = input.priceLabel ?? priceLabelFor(askingPrice) ?? "On request";
+  const seo = seoFor({ ...input, priceLabel });
 
   await db()
     .insert(properties)
@@ -91,7 +175,7 @@ export async function createProperty(
       listingType: input.listingType,
       status: input.status,
 
-      priceLabel: input.priceLabel ?? priceLabelFor(askingPrice) ?? "On request",
+      priceLabel,
       priceValue: askingPrice,
       askingPrice: input.askingPrice ?? null,
       priceUnit: input.priceUnit ?? "INR",
@@ -146,8 +230,9 @@ export async function createProperty(
       suitableFor: input.suitableFor,
       leasePotential: input.leasePotential,
 
-      seoTitle: input.seoTitle,
-      seoDescription: input.seoDescription,
+      // §5: generated from the listing, never typed by hand.
+      seoTitle: seo.seoTitle,
+      seoDescription: seo.seoDescription,
 
       // Rule 1: created is never published.
       workflowStatus: "draft",
@@ -156,13 +241,21 @@ export async function createProperty(
       updatedById: actor.id,
     });
 
+  const uploadError = await attachMedia(id, files, "image");
+
   await audit({
     actorId: actor.id,
     action: "property.created",
     entity: "property",
     entityId: id,
-    after: { reference, name: input.name },
+    after: { reference, name: input.name, photos: files.length },
   });
+
+  // The listing exists either way — say so rather than discarding it, or the
+  // user retries and ends up with two.
+  if (uploadError) {
+    return fail(`Saved, but the photos didn't upload: ${uploadError}`);
+  }
 
   revalidatePath("/admin/properties");
   return succeed({ id });
@@ -188,6 +281,9 @@ export async function updateProperty(
   if (!before) return fail("That property no longer exists.");
 
   const askingPrice = input.askingPrice ?? before.priceValue;
+  const priceLabel =
+    input.priceLabel ?? priceLabelFor(askingPrice) ?? before.priceLabel;
+  const seo = seoFor({ ...input, priceLabel });
 
   await db()
     .update(properties)
@@ -202,7 +298,7 @@ export async function updateProperty(
       listingType: input.listingType,
       status: input.status,
 
-      priceLabel: input.priceLabel ?? priceLabelFor(askingPrice) ?? before.priceLabel,
+      priceLabel,
       priceValue: askingPrice,
       askingPrice: input.askingPrice ?? null,
       priceUnit: input.priceUnit ?? "INR",
@@ -255,8 +351,9 @@ export async function updateProperty(
       suitableFor: input.suitableFor,
       leasePotential: input.leasePotential,
 
-      seoTitle: input.seoTitle,
-      seoDescription: input.seoDescription,
+      // §5: regenerated on every save, so it can't drift from the listing.
+      seoTitle: seo.seoTitle,
+      seoDescription: seo.seoDescription,
 
       updatedById: actor.id,
       updatedAt: sql`now()`,
@@ -426,51 +523,11 @@ export async function uploadMedia(
     .enum(MEDIA_KINDS)
     .catch("image")
     .parse(formData.get("kind"));
-  const files = formData.getAll("files").filter((f): f is File => f instanceof File);
+  const files = filesFrom(formData);
   if (!files.length) return fail("Choose at least one file.");
 
-  // Validate everything before uploading anything, so a rejected third file
-  // doesn't leave two orphans in the bucket.
-  for (const file of files) {
-    const error = validateUpload(file, kind);
-    if (error) return fail(error);
-  }
-
-  const [{ maxOrder }] = await db()
-    .select({ maxOrder: sql<number>`coalesce(max(${propertyMedia.sortOrder}), -1)::int` })
-    .from(propertyMedia)
-    .where(eq(propertyMedia.propertyId, propertyId));
-
-  const [{ existing }] = await db()
-    .select({ existing: sql<number>`count(*)::int` })
-    .from(propertyMedia)
-    .where(and(eq(propertyMedia.propertyId, propertyId), eq(propertyMedia.kind, "image")));
-
-  let order = maxOrder;
-  let imageIndex = existing;
-
-  for (const file of files) {
-    // Must stay under /images/: next.config.ts allows the image optimizer to
-    // fetch `${NEXT_PUBLIC_IMAGE_CDN}/images/**` and nothing else. Uploading
-    // anywhere else produces URLs next/image rejects with a 400.
-    const key = await uploadObject(file, `images/properties/${propertyId}`);
-    order += 1;
-    await db()
-      .insert(propertyMedia)
-      .values({
-        id: newId(),
-        propertyId,
-        kind,
-        storageKey: key,
-        // Documents and sketches are internal by default (§10).
-        isPublic: kind === "image" || kind === "floor_plan",
-        isPrimary: kind === "image" && imageIndex === 0,
-        sortOrder: order,
-        sizeBytes: file.size,
-        contentType: file.type,
-      });
-    if (kind === "image") imageIndex += 1;
-  }
+  const error = await attachMedia(propertyId, files, kind);
+  if (error) return fail(error);
 
   await audit({
     actorId: actor.id,
@@ -585,6 +642,88 @@ export async function setMediaVisibility(
   revalidatePath(`/admin/properties/${media.propertyId}`);
   revalidatePublic(media.propertyId);
   return succeed(null);
+}
+
+// --- bulk import ----------------------------------------------------------
+
+export type ImportReport = {
+  created: number;
+  failures: { line: number; name: string; reason: string }[];
+};
+
+/** Row count cap. Well past any real batch, and stops one bad file from
+ *  holding a request open while it inserts forever. */
+const MAX_IMPORT_ROWS = 500;
+
+/**
+ * Bulk-create properties from a spreadsheet (§6).
+ *
+ * Every row is turned into the same FormData the Add-property form posts and
+ * handed to createProperty, so the import cannot validate differently, default
+ * differently, or skip a permission check. Rows are independent: a bad one is
+ * reported by line number and the rest still land, which is what people expect
+ * from a 200-row sheet.
+ */
+export async function importProperties(
+  _prev: ActionResult<ImportReport> | null,
+  formData: FormData,
+): Promise<ActionResult<ImportReport>> {
+  await requireUser();
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return fail("Choose a CSV file to import.");
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return fail("That file is larger than 5 MB.");
+  }
+
+  const rows = parseCsv(await file.text());
+  if (rows.length < 2) {
+    return fail("That file has a header row but no properties under it.");
+  }
+
+  const { fields, unknown, missing } = mapHeaders(rows[0]);
+  if (missing.length) {
+    return fail(
+      `The sheet is missing required column${missing.length === 1 ? "" : "s"}: ${missing.join(", ")}. Download the template to get the exact headers.`,
+    );
+  }
+  if (unknown.length) {
+    return fail(
+      `Unrecognised column${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. Fix the spelling or delete the column — nothing was imported.`,
+    );
+  }
+
+  const body = rows.slice(1);
+  if (body.length > MAX_IMPORT_ROWS) {
+    return fail(
+      `${body.length} rows is over the ${MAX_IMPORT_ROWS}-row limit. Split the sheet and import it in parts.`,
+    );
+  }
+
+  const report: ImportReport = { created: 0, failures: [] };
+
+  for (const [index, row] of body.entries()) {
+    const result = await createProperty(null, rowToFormData(fields, row));
+    if (result.ok) {
+      report.created += 1;
+      continue;
+    }
+    const details = Object.entries(result.fieldErrors ?? {})
+      .map(([field, messages]) => `${field}: ${messages?.[0]}`)
+      .join("; ");
+    report.failures.push({
+      // +2: the header is line 1 and spreadsheets count from 1, so this is the
+      // line number the user sees in Excel.
+      line: index + 2,
+      name: row[fields.indexOf("name")]?.trim() || "(no name)",
+      reason: details || result.error,
+    });
+  }
+
+  revalidatePath("/admin/properties");
+  return succeed(report);
 }
 
 export async function createAndEdit(

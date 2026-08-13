@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { archiveExpense } from "./actions";
 import { Button } from "@/components/admin/ui";
-import { cdnUrl } from "@/lib/images";
+import { mediaUrl } from "@/lib/images";
 
 export function ExpenseRowActions({
   id,
@@ -23,7 +23,7 @@ export function ExpenseRowActions({
       )}
       {receiptKey && (
         <a
-          href={cdnUrl(receiptKey)}
+          href={mediaUrl(receiptKey)}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-stone-500 hover:text-pine-700"

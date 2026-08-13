@@ -5,7 +5,7 @@ import {
   propertyMedia,
 } from "./db/schema";
 import { propertySeed } from "./properties.seed";
-import { cdnUrl } from "./images";
+import { cdnUrl, mediaUrl } from "./images";
 
 export type { PropertyDetail, PropertyStatus } from "./db/schema";
 
@@ -113,7 +113,7 @@ async function galleryFor(ids: string[]): Promise<Map<string, string[]>> {
 
   for (const row of rows) {
     const list = byProperty.get(row.propertyId) ?? [];
-    list.push(cdnUrl(row.storageKey));
+    list.push(mediaUrl(row.storageKey));
     byProperty.set(row.propertyId, list);
   }
   return byProperty;

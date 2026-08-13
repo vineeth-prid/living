@@ -11,6 +11,63 @@ export const cx = (...parts: (string | false | null | undefined)[]) =>
 export const inputClass =
   "w-full rounded-[10px] border border-stone-300 bg-white px-3 py-2 text-sm text-stone-900 outline-none transition placeholder:text-stone-400 focus:border-pine-500 focus:ring-[3px] focus:ring-pine-500/20 disabled:bg-stone-100 disabled:text-stone-500";
 
+/**
+ * Compact variant of `inputClass` for filter bars: fixed height, no full-width
+ * stretch, so a page's whole filter set sits on one line instead of a block.
+ */
+export const filterClass =
+  "h-9 shrink-0 rounded-[8px] border border-stone-300 bg-white px-2.5 text-sm text-stone-800 outline-none transition placeholder:text-stone-400 focus:border-pine-500 focus:ring-[3px] focus:ring-pine-500/20";
+
+/**
+ * A GET form: filters live in the URL, so a filtered view is shareable and the
+ * back button behaves. One line, scrolling sideways rather than wrapping into
+ * a wall — the filters were taking more vertical space than the results.
+ */
+export function FilterBar({
+  clearHref,
+  children,
+}: {
+  clearHref: string;
+  children: ReactNode;
+}) {
+  return (
+    <form
+      method="get"
+      className="mb-4 flex items-center gap-2 overflow-x-auto rounded-[12px] border border-stone-200 bg-white px-3 py-2"
+    >
+      {children}
+      <button
+        type="submit"
+        className="h-9 shrink-0 rounded-[8px] bg-pine-600 px-4 text-sm font-medium text-white transition hover:bg-pine-700"
+      >
+        Apply
+      </button>
+      <Link
+        href={clearHref}
+        className="shrink-0 px-1 text-sm text-stone-500 hover:text-stone-800"
+      >
+        Clear
+      </Link>
+    </form>
+  );
+}
+
+/** Label sitting inline with its control, for date filters that need one. */
+export function FilterLabel({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex shrink-0 items-center gap-1.5 text-xs text-stone-500">
+      {label}
+      {children}
+    </label>
+  );
+}
+
 const BUTTON_VARIANTS = {
   primary:
     "bg-pine-600 text-white hover:bg-pine-700 disabled:bg-pine-600/50 shadow-soft",

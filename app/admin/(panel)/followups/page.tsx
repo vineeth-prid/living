@@ -31,8 +31,8 @@ export default async function FollowUpsPage({
     <Link
       href={href}
       className={cx(
-        "rounded-[9px] px-3 py-1.5 text-sm transition",
-        active ? "bg-pine-600 text-white" : "text-stone-600 hover:bg-stone-200",
+        "shrink-0 rounded-[8px] px-3 py-1.5 text-sm transition",
+        active ? "bg-pine-600 text-white" : "text-stone-600 hover:bg-stone-100",
       )}
     >
       {label}
@@ -54,11 +54,11 @@ export default async function FollowUpsPage({
         }
       />
 
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-[12px] border border-stone-200 bg-white p-2">
+      <div className="mb-4 flex items-center gap-1.5 overflow-x-auto rounded-[12px] border border-stone-200 bg-white px-3 py-2">
         {tab("Pending", `/admin/followups?scope=${scope}&status=pending`, status === "pending")}
         {tab("Completed", `/admin/followups?scope=${scope}&status=completed`, status === "completed")}
         {tab("All", `/admin/followups?scope=${scope}&status=all`, status === "all")}
-        <span className="mx-2 h-5 w-px bg-stone-200" />
+        <span className="mx-1.5 h-5 w-px shrink-0 bg-stone-200" />
         {tab("Mine", `/admin/followups?scope=mine&status=${status}`, scope === "mine")}
         {user.role === "admin" &&
           tab("Everyone", `/admin/followups?scope=all&status=${status}`, scope === "all")}

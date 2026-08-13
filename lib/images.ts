@@ -9,6 +9,19 @@ const CDN = process.env.NEXT_PUBLIC_IMAGE_CDN ?? "";
 /** Turn a bucket-relative path into a URL the browser can fetch. */
 export const cdnUrl = (path: string) => `${CDN}${path}`;
 
+/**
+ * URL for something the admin panel uploaded (property media, receipts).
+ *
+ * Deliberately NOT cdnUrl: that produced a bare relative path whenever
+ * NEXT_PUBLIC_IMAGE_CDN was unset, and a 403 whenever the bucket wasn't
+ * anonymously readable — either way, uploaded photos came back blank on the
+ * edit page. app/media/[...key] reads the object with the server's own
+ * credentials, so these URLs work with a private bucket and with no CDN at all,
+ * and same-origin means next/image needs no remotePatterns entry.
+ */
+export const mediaUrl = (key: string) =>
+  `/media/${key.replace(/^\/+/, "")}`;
+
 // Bare, bucket-relative paths. These are what get stored — in Postgres rows
 // and in the seed — so the same data works across local, staging and prod.
 export const imagePaths = {

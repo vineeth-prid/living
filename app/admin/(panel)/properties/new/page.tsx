@@ -20,6 +20,7 @@ export default async function NewPropertyPage() {
           action={createAndEdit}
           submitLabel="Save draft"
           canSetFinalPrice={can(user, PERMISSIONS.propertyFinalPrice)}
+          showPhotos
         />
       </div>
     </>

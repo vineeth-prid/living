@@ -13,6 +13,7 @@ import {
   Menu,
   ReceiptIndianRupee,
   Settings,
+  Upload,
   Users,
   UserSquare2,
   X,
@@ -53,6 +54,7 @@ export function Sidebar({
       items: [
         { href: "/admin/properties", label: "All Properties", icon: Building2 },
         { href: "/admin/properties/new", label: "Add Property", icon: ClipboardList },
+        { href: "/admin/properties/import", label: "Import CSV", icon: Upload },
       ],
     },
     {
@@ -78,11 +80,15 @@ export function Sidebar({
       : []),
   ];
 
+  // /admin/properties stays lit on /admin/properties/[id], but must not also
+  // light up while a sibling with its own entry is open.
+  const SIBLINGS = ["/admin/properties/new", "/admin/properties/import"];
+
   const isActive = (href: string) =>
     pathname === href ||
-    // /admin/properties stays lit on /admin/properties/[id], but "Add Property"
-    // must not also light up, so exclude deeper exact siblings.
-    (href !== "/admin/properties/new" && pathname.startsWith(`${href}/`));
+    (!SIBLINGS.includes(href) &&
+      !SIBLINGS.includes(pathname) &&
+      pathname.startsWith(`${href}/`));
 
   return (
     <>

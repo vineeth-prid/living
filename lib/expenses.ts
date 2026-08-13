@@ -19,7 +19,7 @@ import {
   properties,
   users,
 } from "./db/schema";
-import { cdnUrl } from "./images";
+import { mediaUrl } from "./images";
 
 // Admin-only expense ledger. Nothing here is imported by a public page or by
 // the employee workspace — /admin/expenses gates on requireAdmin().
@@ -136,7 +136,7 @@ export async function getExpense(id: string) {
     .limit(1);
 
   if (!row) return null;
-  return { ...row, receiptUrl: row.receiptKey ? cdnUrl(row.receiptKey) : null };
+  return { ...row, receiptUrl: row.receiptKey ? mediaUrl(row.receiptKey) : null };
 }
 
 export async function expenseCategoryOptions(includeInactive = false) {

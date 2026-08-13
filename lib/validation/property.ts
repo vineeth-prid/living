@@ -18,11 +18,19 @@ const optionalText = z
   .optional()
   .transform((v) => (v ? v : undefined));
 
+/**
+ * Numbers as people actually type them here: "₹1,85,00,000", "4.5 %", "1 840".
+ * Rejecting those was reading as "Enter a number." on a field that plainly
+ * held one, so the currency, grouping and unit noise is stripped first.
+ */
 const optionalNumber = z
   .string()
   .trim()
   .optional()
-  .transform((v) => (v ? Number(v) : undefined))
+  .transform((v) => {
+    const cleaned = v?.replace(/[₹,%\s]/g, "");
+    return cleaned ? Number(cleaned) : undefined;
+  })
   .refine((v) => v === undefined || Number.isFinite(v), "Enter a number.")
   .refine((v) => v === undefined || v >= 0, "Can't be negative.");
 
@@ -31,14 +39,35 @@ const optionalInt = optionalNumber.refine(
   "Enter a whole number.",
 );
 
+/**
+ * An unchecked box submits nothing at all, so the key is simply absent from
+ * the FormData — which is not the same as present-and-undefined. Without the
+ * trailing .optional() every save with the box unticked failed on a field the
+ * form never showed as invalid.
+ */
 const checkbox = z
-  .union([z.literal("on"), z.literal("true"), z.literal("false"), z.null(), z.undefined()])
+  .union([z.literal("on"), z.literal("true"), z.literal("false"), z.literal(""), z.null()])
+  .optional()
   .transform((v) => v === "on" || v === "true");
+
+/**
+ * A `<select>` whose placeholder option is "—" submits "", which no enum
+ * accepts. Same shape as optionalText, for enum-backed dropdowns.
+ */
+const optionalEnum = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .enum(values)
+    .or(z.literal(""))
+    .optional()
+    .transform((v) => (v ? (v as T[number]) : undefined));
 
 export const propertySchema = z
   .object({
     name: z.string().trim().min(3, "Give the property a title."),
-    summary: z.string().trim().min(10, "Write a short summary."),
+    summary: z
+      .string()
+      .trim()
+      .min(10, "Summary needs at least 10 characters — it's the card copy."),
     description: optionalText,
     kind: z.enum(PROPERTY_KINDS),
     listingType: z.enum(LISTING_TYPES),
@@ -70,7 +99,7 @@ export const propertySchema = z
 
     // Land
     landArea: optionalNumber,
-    landAreaUnit: z.enum(AREA_UNITS).optional(),
+    landAreaUnit: optionalEnum(AREA_UNITS),
     surveyNumber: optionalText,
     roadAccess: optionalText,
     facing: optionalText,
@@ -79,7 +108,7 @@ export const propertySchema = z
     // Building
     hasBuilding: checkbox,
     builtUpArea: optionalNumber,
-    builtUpAreaUnit: z.enum(AREA_UNITS).optional(),
+    builtUpAreaUnit: optionalEnum(AREA_UNITS),
     floors: optionalInt,
     units: optionalInt,
     beds: optionalInt,
@@ -92,7 +121,7 @@ export const propertySchema = z
     amenities: z.array(z.string().trim().min(1)).default([]),
 
     // Commercial
-    commercialKind: z.enum(COMMERCIAL_KINDS).optional(),
+    commercialKind: optionalEnum(COMMERCIAL_KINDS),
     floorNumber: optionalText,
     occupancy: optionalText,
     suitableFor: optionalText,
@@ -111,10 +140,7 @@ export const propertySchema = z
     internalNotes: optionalText,
     sellerName: optionalText,
     sellerContact: optionalText,
-
-    // SEO
-    seoTitle: optionalText,
-    seoDescription: optionalText,
+    // No seoTitle/seoDescription: they're derived by seoFor() below.
   })
   .refine(
     (v) => v.listingType === "rental" || v.askingPrice !== undefined,
@@ -163,6 +189,46 @@ export function publishBlockers(p: {
     blockers.push("Add at least one public photo.");
   }
   return blockers;
+}
+
+/**
+ * SEO title and meta description, derived from the listing itself (§5).
+ *
+ * There is no SEO step on the form any more: two free-text boxes asking an
+ * agent to rewrite the property title were producing either blanks or
+ * duplicates of it. The facts that matter for search — configuration, locality,
+ * city — are already captured, so they're assembled here instead, on every
+ * save, and stay correct when the listing is edited.
+ */
+export function seoFor(p: {
+  name: string;
+  type: string;
+  locality: string;
+  city: string;
+  summary: string;
+  listingType: string;
+  priceLabel?: string;
+}): { seoTitle: string; seoDescription: string } {
+  const intent = p.listingType === "rental" ? "for rent" : "for sale";
+  const title = clamp(
+    `${p.name} — ${p.type} ${intent} in ${p.locality}, ${p.city}`,
+    60,
+  );
+
+  // The summary carries the description; the price is appended only when it
+  // still fits, so the snippet is never cut mid-figure.
+  const tail = p.priceLabel ? ` ${p.priceLabel}.` : "";
+  const body = clamp(p.summary, 155 - tail.length);
+  return { seoTitle: title, seoDescription: `${body}${tail}` };
+}
+
+/** Truncates on a word boundary, with an ellipsis, or returns it untouched. */
+function clamp(text: string, max: number): string {
+  const value = text.trim().replace(/\s+/g, " ");
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
 /** Formats 18500000 → "₹1.85 Cr", the label the public cards render. */

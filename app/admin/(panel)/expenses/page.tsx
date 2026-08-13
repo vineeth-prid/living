@@ -11,13 +11,15 @@ import { PAYMENT_METHODS } from "@/lib/db/schema";
 import {
   Card,
   EmptyState,
+  FilterBar,
+  FilterLabel,
   LinkButton,
   PageHeader,
   TableWrap,
   Td,
   Th,
   cx,
-  inputClass,
+  filterClass,
 } from "@/components/admin/ui";
 import { dateOnly } from "@/components/admin/crm";
 import { ExpenseRowActions } from "./row-actions";
@@ -97,20 +99,17 @@ export default async function ExpensesPage({
         </Card>
       </div>
 
-      <form
-        method="get"
-        className="mb-5 flex flex-wrap items-end gap-3 rounded-[14px] border border-stone-200 bg-white p-4"
-      >
+      <FilterBar clearHref="/admin/expenses">
         <input
           name="q"
           defaultValue={sp.q ?? ""}
           placeholder="Description, vendor, invoice…"
-          className={cx(inputClass, "w-full sm:w-64")}
+          className={cx(filterClass, "w-56")}
         />
         <select
           name="categoryKey"
           defaultValue={sp.categoryKey ?? ""}
-          className={cx(inputClass, "w-auto")}
+          className={filterClass}
         >
           <option value="">Any category</option>
           {categories.map((c) => (
@@ -122,7 +121,7 @@ export default async function ExpensesPage({
         <select
           name="paymentMethod"
           defaultValue={sp.paymentMethod ?? ""}
-          className={cx(inputClass, "w-auto")}
+          className={filterClass}
         >
           <option value="">Any method</option>
           {PAYMENT_METHODS.map((m) => (
@@ -131,37 +130,28 @@ export default async function ExpensesPage({
             </option>
           ))}
         </select>
-        <label className="text-xs text-stone-600">
-          From
+        <FilterLabel label="From">
           <input
             type="date"
             name="from"
             defaultValue={sp.from ?? ""}
-            className={cx(inputClass, "mt-1 w-auto")}
+            className={filterClass}
           />
-        </label>
-        <label className="text-xs text-stone-600">
-          To
+        </FilterLabel>
+        <FilterLabel label="To">
           <input
             type="date"
             name="to"
             defaultValue={sp.to ?? ""}
-            className={cx(inputClass, "mt-1 w-auto")}
+            className={filterClass}
           />
-        </label>
-        <button
-          type="submit"
-          className="rounded-[10px] bg-pine-600 px-4 py-2 text-sm font-medium text-white hover:bg-pine-700"
-        >
-          Apply
-        </button>
-        <Link
-          href="/admin/expenses"
-          className="text-sm text-stone-500 hover:text-stone-800"
-        >
-          Clear
-        </Link>
-      </form>
+        </FilterLabel>
+        {/* Carried through so the "See the entries" link from a property keeps
+            its filter when anything else on the bar is changed. */}
+        {sp.propertyId && (
+          <input type="hidden" name="propertyId" value={sp.propertyId} />
+        )}
+      </FilterBar>
 
       {rows.length === 0 ? (
         <EmptyState

@@ -6,7 +6,7 @@ import {
   users,
   type WorkflowStatus,
 } from "./db/schema";
-import { cdnUrl } from "./images";
+import { mediaUrl } from "./images";
 import { PERMISSIONS } from "./auth/constants";
 import type { SessionUser } from "./auth/session";
 import { can } from "./auth/dal";
@@ -122,7 +122,7 @@ export async function getAdminProperty(id: string, viewer: SessionUser) {
     ...rest,
     finalPrice: maySeeFinalPrice ? finalPrice : null,
     maySeeFinalPrice,
-    media: media.map((m) => ({ ...m, url: cdnUrl(m.storageKey) })),
+    media: media.map((m) => ({ ...m, url: mediaUrl(m.storageKey) })),
   };
 }
 

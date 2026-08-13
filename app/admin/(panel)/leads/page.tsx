@@ -10,13 +10,15 @@ import {
 import { LEAD_PRIORITIES, LEAD_STATUSES } from "@/lib/db/schema";
 import {
   EmptyState,
+  FilterBar,
+  FilterLabel,
   LinkButton,
   PageHeader,
   TableWrap,
   Td,
   Th,
   cx,
-  inputClass,
+  filterClass,
 } from "@/components/admin/ui";
 import {
   LEAD_STATUS_LABELS,
@@ -86,59 +88,53 @@ export default async function LeadsPage({
         }
       />
 
-      <form
-        method="get"
-        className="mb-5 flex flex-wrap items-end gap-3 rounded-[14px] border border-stone-200 bg-white p-4"
-      >
+      <FilterBar clearHref="/admin/leads">
         <input
           name="q"
           defaultValue={sp.q ?? ""}
           placeholder="Name, mobile, email, reference…"
-          className={cx(inputClass, "w-full sm:w-64")}
+          className={cx(filterClass, "w-52")}
         />
-        <select name="status" defaultValue={filters.status} className={cx(inputClass, "w-auto")}>
+        <select name="status" defaultValue={filters.status} className={filterClass}>
           <option value="all">Any status</option>
           {LEAD_STATUSES.map((s) => (
             <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>
           ))}
         </select>
-        <select name="priority" defaultValue={sp.priority ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="priority" defaultValue={sp.priority ?? ""} className={filterClass}>
           <option value="">Any priority</option>
           {LEAD_PRIORITIES.map((p) => (
             <option key={p} value={p} className="capitalize">{p}</option>
           ))}
         </select>
         {user.role === "admin" && (
-          <select name="assignedToId" defaultValue={sp.assignedToId ?? ""} className={cx(inputClass, "w-auto")}>
+          <select name="assignedToId" defaultValue={sp.assignedToId ?? ""} className={filterClass}>
             <option value="">Anyone</option>
             {employees.map((e) => (
               <option key={e.id} value={e.id}>{e.fullName}</option>
             ))}
           </select>
         )}
-        <select name="typeKey" defaultValue={sp.typeKey ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="typeKey" defaultValue={sp.typeKey ?? ""} className={filterClass}>
           <option value="">Any type</option>
           {types.map((t) => (
             <option key={t.key} value={t.key}>{t.label}</option>
           ))}
         </select>
-        <select name="sourceKey" defaultValue={sp.sourceKey ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="sourceKey" defaultValue={sp.sourceKey ?? ""} className={filterClass}>
           <option value="">Any source</option>
           {sources.map((s) => (
             <option key={s.key} value={s.key}>{s.label}</option>
           ))}
         </select>
-        <label className="flex items-center gap-1.5 text-xs text-stone-600">
-          <span>Follow-up before</span>
-          <input type="date" name="followUpBefore" defaultValue={sp.followUpBefore ?? ""} className={cx(inputClass, "w-auto")} />
+        <FilterLabel label="Due before">
+          <input type="date" name="followUpBefore" defaultValue={sp.followUpBefore ?? ""} className={filterClass} />
+        </FilterLabel>
+        <label className="flex shrink-0 items-center gap-1.5 text-xs text-stone-500">
+          <input type="checkbox" name="mine" value="1" defaultChecked={sp.mine === "1"} className="h-4 w-4 accent-[var(--color-pine-600)]" />
+          Only mine
         </label>
-        <button type="submit" className="rounded-[10px] bg-pine-600 px-4 py-2 text-sm font-medium text-white hover:bg-pine-700">
-          Apply
-        </button>
-        <Link href="/admin/leads" className="text-sm text-stone-500 hover:text-stone-800">
-          Clear
-        </Link>
-      </form>
+      </FilterBar>
 
       {rows.length === 0 ? (
         <EmptyState

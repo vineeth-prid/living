@@ -55,9 +55,20 @@ export function MediaManager({
     null,
   );
   const [pending, start] = useTransition();
-  // Optimistic ordering so arrow clicks feel instant; the server is the
-  // source of truth on reload.
+  // Optimistic ordering so arrow clicks feel instant.
   const [items, setItems] = useState(media);
+
+  // …but the server stays the source of truth. Without this, `items` kept its
+  // initial value for the life of the component: an upload revalidated the
+  // page, the new rows arrived as props, and the grid went on showing the old
+  // list until someone reloaded by hand. Comparing ids rather than the array
+  // itself — the server hands back a fresh array on every render.
+  const signature = media.map((m) => m.id).join();
+  const [snapshot, setSnapshot] = useState(signature);
+  if (snapshot !== signature) {
+    setSnapshot(signature);
+    setItems(media);
+  }
 
   const move = (index: number, delta: number) => {
     const next = [...items];
