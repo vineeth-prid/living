@@ -69,6 +69,13 @@ const publicColumns = {
 } as const;
 
 /**
+ * The allowlist as plain strings, so scripts/check-security.ts can assert that
+ * no internal column has crept into it. Derived from the projection itself —
+ * a second hand-maintained list would drift and quietly stop guarding anything.
+ */
+export const PUBLIC_PROPERTY_FIELDS: string[] = Object.keys(publicColumns);
+
+/**
  * Rule 2: published AND explicitly public AND not archived. Both flags must
  * hold — publishing sets them together, but unpublishing only clears isPublic,
  * so a listing can be pulled from the site without losing its workflow state.

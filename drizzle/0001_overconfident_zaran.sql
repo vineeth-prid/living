@@ -254,4 +254,13 @@ CREATE INDEX "properties_public_idx" ON "properties" USING btree ("workflow_stat
 CREATE INDEX "properties_kind_idx" ON "properties" USING btree ("kind");--> statement-breakpoint
 CREATE INDEX "properties_city_idx" ON "properties" USING btree ("city");--> statement-breakpoint
 CREATE INDEX "properties_created_at_idx" ON "properties" USING btree ("created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "properties_reference_idx" ON "properties" USING btree ("reference");
+CREATE UNIQUE INDEX "properties_reference_idx" ON "properties" USING btree ("reference");--> statement-breakpoint
+-- Data migration: every listing that already existed was live on the website
+-- before the admin panel introduced a publishing workflow. Without this they
+-- would all default to `draft` and silently disappear from livingbyitr.com the
+-- moment this migration runs. Only affects rows present at migration time.
+UPDATE "properties"
+SET "workflow_status" = 'published',
+    "is_public" = true,
+    "published_at" = COALESCE("published_at", now())
+WHERE "deleted_at" IS NULL;

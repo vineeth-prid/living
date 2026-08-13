@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check } from "lucide-react";
 import { site } from "@/lib/site";
 import { submitEnquiry, type EnquiryState } from "@/app/actions/enquiry";
+import { attachAttribution } from "@/lib/attribution";
 
 // Submissions now become CRM leads (§31) instead of opening a mail client.
 // The markup below is unchanged — same fields, same classes, same animation.
@@ -17,30 +18,13 @@ const interests = [
 ];
 
 export function ContactForm() {
-  const [state, formAction] = useActionState<EnquiryState, FormData>(
+  const [state, submit] = useActionState<EnquiryState, FormData>(
     submitEnquiry,
     {},
   );
   const sent = Boolean(state.ok);
-  const [attribution, setAttribution] = useState({
-    landingPage: "",
-    referrerUrl: "",
-    utmSource: "",
-    utmMedium: "",
-    utmCampaign: "",
-  });
-
-  // Browser-only values, read after mount so server and client markup match.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setAttribution({
-      landingPage: window.location.pathname,
-      referrerUrl: document.referrer.slice(0, 500),
-      utmSource: params.get("utm_source") ?? "",
-      utmMedium: params.get("utm_medium") ?? "",
-      utmCampaign: params.get("utm_campaign") ?? "",
-    });
-  }, []);
+  // Attribution is stamped onto the payload as the form submits.
+  const formAction = (formData: FormData) => submit(attachAttribution(formData));
 
   const field =
     "mt-2 w-full rounded-[12px] border border-stone-300 bg-page px-4 py-3 text-ink outline-none transition focus:border-pine-500 focus:ring-[3px] focus:ring-pine-500/25";
@@ -89,11 +73,6 @@ export function ContactForm() {
                 {state.error}
               </p>
             )}
-            <input type="hidden" name="landingPage" value={attribution.landingPage} />
-            <input type="hidden" name="referrerUrl" value={attribution.referrerUrl} />
-            <input type="hidden" name="utmSource" value={attribution.utmSource} />
-            <input type="hidden" name="utmMedium" value={attribution.utmMedium} />
-            <input type="hidden" name="utmCampaign" value={attribution.utmCampaign} />
             {/* Honeypot — hidden from people, irresistible to bots. */}
             <input
               type="text"

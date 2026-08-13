@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import { Check } from "lucide-react";
 import { submitEnquiry, type EnquiryState } from "@/app/actions/enquiry";
+import { attachAttribution } from "@/lib/attribution";
 
 // Public enquiry form on a property page. Visually part of the Living site —
 // same tokens, radii and shadows as the existing contact form — not the admin
@@ -34,30 +35,13 @@ export function PropertyEnquiryForm({
   propertyName: string;
   propertyReference: string | null;
 }) {
-  const [state, formAction] = useActionState<EnquiryState, FormData>(
+  const [state, submit] = useActionState<EnquiryState, FormData>(
     submitEnquiry,
     {},
   );
-  const [attribution, setAttribution] = useState({
-    landingPage: "",
-    referrerUrl: "",
-    utmSource: "",
-    utmMedium: "",
-    utmCampaign: "",
-  });
-
-  // Read on the client after mount: these values exist only in the browser,
-  // and reading them during render would differ between server and client.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setAttribution({
-      landingPage: window.location.pathname,
-      referrerUrl: document.referrer.slice(0, 500),
-      utmSource: params.get("utm_source") ?? "",
-      utmMedium: params.get("utm_medium") ?? "",
-      utmCampaign: params.get("utm_campaign") ?? "",
-    });
-  }, []);
+  // Attribution is stamped onto the payload as the form submits, so no effect
+  // and no hidden inputs are needed.
+  const formAction = (formData: FormData) => submit(attachAttribution(formData));
 
   if (state.ok) {
     return (
@@ -100,11 +84,6 @@ export function PropertyEnquiryForm({
       )}
 
       <input type="hidden" name="propertyId" value={propertyId} />
-      <input type="hidden" name="landingPage" value={attribution.landingPage} />
-      <input type="hidden" name="referrerUrl" value={attribution.referrerUrl} />
-      <input type="hidden" name="utmSource" value={attribution.utmSource} />
-      <input type="hidden" name="utmMedium" value={attribution.utmMedium} />
-      <input type="hidden" name="utmCampaign" value={attribution.utmCampaign} />
       {/* Honeypot — hidden from people, irresistible to bots. */}
       <input
         type="text"

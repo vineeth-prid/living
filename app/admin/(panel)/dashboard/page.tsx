@@ -20,7 +20,7 @@ import {
   cx,
   inputClass,
 } from "@/components/admin/ui";
-import { LEAD_STATUS_LABELS, inr } from "@/components/admin/crm";
+import { inr } from "@/components/admin/crm";
 
 export const metadata = { title: "Dashboard" };
 

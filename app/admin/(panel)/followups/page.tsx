@@ -39,7 +39,9 @@ export default async function FollowUpsPage({
     </Link>
   );
 
-  const overdue = rows.filter((r) => r.dueAt.getTime() < Date.now()).length;
+  // relativeDue already owns the "is this late?" comparison, so the header
+  // count and the per-row labels can never disagree.
+  const overdue = rows.filter((r) => relativeDue(r.dueAt).overdue).length;
 
   return (
     <>

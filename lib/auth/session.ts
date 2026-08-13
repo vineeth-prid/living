@@ -89,8 +89,16 @@ export async function readSession(): Promise<SessionUser | null> {
   const row = rows[0];
   if (!row || !row.isActive) return null;
 
-  const { isActive: _isActive, ...user } = row;
-  return user;
+  // Rebuilt field by field rather than spread-minus-isActive: the session
+  // object is handed to client components, so what it carries is deliberate.
+  return {
+    id: row.id,
+    fullName: row.fullName,
+    email: row.email,
+    role: row.role,
+    permissions: row.permissions,
+    mustChangePassword: row.mustChangePassword,
+  };
 }
 
 export async function destroySession() {
