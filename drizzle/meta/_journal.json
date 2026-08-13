@@ -8,6 +8,13 @@
       "when": 1786195826671,
       "tag": "0000_yielding_valkyrie",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786615877426,
+      "tag": "0001_overconfident_zaran",
+      "breakpoints": true
     }
   ]
 }
