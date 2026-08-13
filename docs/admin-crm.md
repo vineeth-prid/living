@@ -123,8 +123,9 @@ moment the migration ran. It only touches rows present at migration time.
 ## Checks
 
 ```bash
-npm run check:security   # 15 assertions: public/internal split, password
-                         # hashing, publish gate, duplicate matching, funnel math
+npm run check:security   # 20 assertions: public/internal split, password
+                         # hashing, publish gate, duplicate matching, funnel
+                         # math, paise/rupee conversion, SMTP configuration
 npm run check:jsonld     # existing structured-data check
 npx tsc --noEmit
 npm run lint
@@ -151,9 +152,8 @@ Marked in code with `ponytail:` comments.
   `DATABASE_URL` is unset. Delete that branch once Postgres is wired
   everywhere — it can only ever serve seed content, never stale production data.
 - **Pipeline columns** cap at 50 cards and say how many are hidden.
-- **Notifications** (§36) are not built. The activity and follow-up tables carry
-  what a notifier would need — `lead_followups.remindAt` exists and is unused —
-  so adding one later doesn't require reshaping the CRM.
+- **Notifications** are event-driven only — see the Notifications section below
+  for what that does and doesn't cover.
 
 ---
 
