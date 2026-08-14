@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { PUBLIC_PROPERTY_FIELDS } from "../lib/properties";
 import { hashPassword, verifyPassword } from "../lib/auth/password";
 import { normaliseMobile } from "../lib/leads";
-import { funnelFrom } from "../lib/analytics";
+import { RANGE_PRESETS, funnelFrom, resolveRange } from "../lib/analytics";
 import { priceLabelFor, publishBlockers } from "../lib/validation/property";
 import { formatMoney, toMajor, toMinor } from "../lib/expenses";
 import { hasSmtp, teamRecipients } from "../lib/notify";
@@ -135,6 +135,32 @@ async function main() {
       listingType: "rental",
     });
     assert.deepEqual(blockers, []);
+  });
+
+  // --- §33: the range every report is measured over -------------------------
+  await check("every offered range preset resolves to a real window", () => {
+    for (const preset of RANGE_PRESETS) {
+      const range = resolveRange(preset.value);
+      assert.ok(
+        range.from <= range.to,
+        `${preset.value} resolved backwards: ${range.from} → ${range.to}`,
+      );
+      assert.equal(range.label, preset.label, `${preset.value} mislabelled`);
+    }
+  });
+
+  await check("explicit dates beat the preset", () => {
+    // They used to need a hidden range=custom alongside them, so picking two
+    // dates and leaving the preset alone quietly reported the preset instead.
+    const range = resolveRange("7d", "2026-01-01", "2026-01-31");
+    assert.equal(range.label, "Custom range");
+    assert.equal(range.from.toISOString().slice(0, 10), "2026-01-01");
+    assert.equal(range.to.toISOString().slice(0, 10), "2026-01-31");
+
+    // A half-filled or unparseable pair falls back rather than throwing.
+    assert.equal(resolveRange("7d", "2026-01-01").label, "Last 7 days");
+    assert.equal(resolveRange(undefined, "junk", "junk").label, "Last 30 days");
+    assert.equal(resolveRange(undefined).label, "Last 30 days");
   });
 
   // --- §33: the funnel must never report progress as a loss -----------------

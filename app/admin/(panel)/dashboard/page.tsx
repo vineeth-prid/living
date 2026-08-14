@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/dal";
 import {
+  RANGE_PRESETS,
   employeePerformance,
   funnelFrom,
   leadCities,
@@ -13,12 +14,14 @@ import {
 import { employeeOptions, leadSourceOptions } from "@/lib/leads.admin";
 import {
   Card,
+  FilterBar,
+  FilterLabel,
   PageHeader,
   TableWrap,
   Td,
   Th,
   cx,
-  inputClass,
+  filterClass,
 } from "@/components/admin/ui";
 import { inr } from "@/components/admin/crm";
 
@@ -59,70 +62,47 @@ export default async function DashboardPage({
   const won = leadStats.status.closed_won ?? 0;
   const avgDeal = won > 0 ? Math.round(leadStats.wonValue / won) : 0;
 
-  const rangeTab = (key: string, label: string) => (
-    <Link
-      key={key}
-      href={`/admin/dashboard?range=${key}`}
-      className={cx(
-        "rounded-[9px] px-3 py-1.5 text-sm transition",
-        (sp.range ?? "30d") === key
-          ? "bg-pine-600 text-white"
-          : "text-stone-600 hover:bg-stone-200",
-      )}
-    >
-      {label}
-    </Link>
-  );
-
   return (
     <>
       <PageHeader title="Dashboard" subtitle={`${range.label} · lead and inventory performance`} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[12px] border border-stone-200 bg-white p-2">
-        {rangeTab("today", "Today")}
-        {rangeTab("7d", "7 days")}
-        {rangeTab("30d", "30 days")}
-        {rangeTab("month", "This month")}
-        {rangeTab("last_month", "Last month")}
-      </div>
-
-      <form method="get" className="mb-6 flex flex-wrap items-end gap-3 rounded-[14px] border border-stone-200 bg-white p-4">
-        <input type="hidden" name="range" value="custom" />
-        <label className="text-xs text-stone-600">
-          From
-          <input type="date" name="from" defaultValue={sp.from ?? ""} className={cx(inputClass, "mt-1 w-auto")} />
-        </label>
-        <label className="text-xs text-stone-600">
-          To
-          <input type="date" name="to" defaultValue={sp.to ?? ""} className={cx(inputClass, "mt-1 w-auto")} />
-        </label>
-        <select name="assignedToId" defaultValue={sp.assignedToId ?? ""} className={cx(inputClass, "w-auto")}>
+      <FilterBar clearHref="/admin/dashboard">
+        <select name="range" defaultValue={sp.range ?? "30d"} className={filterClass}>
+          {RANGE_PRESETS.map((preset) => (
+            <option key={preset.value} value={preset.value}>{preset.label}</option>
+          ))}
+        </select>
+        {/* Filling both dates overrides the preset — resolveRange prefers them. */}
+        <FilterLabel label="From">
+          <input type="date" name="from" defaultValue={sp.from ?? ""} className={filterClass} />
+        </FilterLabel>
+        <FilterLabel label="To">
+          <input type="date" name="to" defaultValue={sp.to ?? ""} className={filterClass} />
+        </FilterLabel>
+        <select name="assignedToId" defaultValue={sp.assignedToId ?? ""} className={filterClass}>
           <option value="">Everyone</option>
           {employees.map((e) => (
             <option key={e.id} value={e.id}>{e.fullName}</option>
           ))}
         </select>
-        <select name="sourceKey" defaultValue={sp.sourceKey ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="sourceKey" defaultValue={sp.sourceKey ?? ""} className={filterClass}>
           <option value="">Any source</option>
           {sourceList.map((s) => (
             <option key={s.key} value={s.key}>{s.label}</option>
           ))}
         </select>
-        <select name="propertyKind" defaultValue={sp.propertyKind ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="propertyKind" defaultValue={sp.propertyKind ?? ""} className={filterClass}>
           <option value="">Any property type</option>
           <option value="residential">Residential</option>
           <option value="commercial">Commercial</option>
         </select>
-        <select name="city" defaultValue={sp.city ?? ""} className={cx(inputClass, "w-auto")}>
+        <select name="city" defaultValue={sp.city ?? ""} className={filterClass}>
           <option value="">Any city</option>
           {cities.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <button type="submit" className="rounded-[10px] bg-pine-600 px-4 py-2 text-sm font-medium text-white hover:bg-pine-700">
-          Apply
-        </button>
-      </form>
+      </FilterBar>
 
       <section className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi label="Total leads" value={leadStats.total} href="/admin/leads" />
@@ -246,6 +226,7 @@ export default async function DashboardPage({
                   <Th>Won</Th>
                   <Th>Lost</Th>
                   <Th>Win rate</Th>
+                  <Th className="text-right">Closed value</Th>
                 </tr>
               </thead>
               <tbody>
@@ -259,6 +240,7 @@ export default async function DashboardPage({
                       <Td>{row.won}</Td>
                       <Td>{row.lost}</Td>
                       <Td>{closed > 0 ? `${Math.round((row.won / closed) * 100)}%` : "—"}</Td>
+                      <Td className="mono text-right">{inr(Number(row.wonValue))}</Td>
                     </tr>
                   );
                 })}

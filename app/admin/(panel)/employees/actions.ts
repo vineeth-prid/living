@@ -19,6 +19,7 @@ import {
 } from "@/lib/auth/dal";
 import { audit, changedFields } from "@/lib/audit";
 import { newId } from "@/lib/ids";
+import type { EmployeeResult } from "./employee-form";
 
 // Every action re-derives the actor from the session cookie. Nothing here reads
 // an actor id, role or permission out of the submitted form (§40).
@@ -63,9 +64,9 @@ function parseForm(formData: FormData) {
 }
 
 export async function createEmployee(
-  _prev: ActionResult<{ password: string }> | null,
+  _prev: ActionResult<EmployeeResult> | null,
   formData: FormData,
-): Promise<ActionResult<{ password: string }>> {
+): Promise<ActionResult<EmployeeResult>> {
   const actor = await requireAdminActor();
   const parsed = parseForm(formData);
   if (!parsed.success) {
@@ -117,9 +118,9 @@ export async function createEmployee(
 
 export async function updateEmployee(
   id: string,
-  _prev: ActionResult<null> | null,
+  _prev: ActionResult<EmployeeResult> | null,
   formData: FormData,
-): Promise<ActionResult<null>> {
+): Promise<ActionResult<EmployeeResult>> {
   const actor = await requireAdminActor();
   const parsed = parseForm(formData);
   if (!parsed.success) {

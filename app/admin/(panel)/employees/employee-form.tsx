@@ -3,12 +3,14 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import { Check } from "lucide-react";
 import { PERMISSIONS } from "@/lib/auth/constants";
 import {
   Button,
   Card,
   ErrorText,
   Field,
+  LinkButton,
   inputClass,
 } from "@/components/admin/ui";
 import type { ActionResult } from "@/lib/auth/dal";
@@ -46,26 +48,57 @@ function Submit({ label }: { label: string }) {
   );
 }
 
-export function EmployeeForm<T>({
+/** Create returns the one-time password; update has nothing to hand back. */
+export type EmployeeResult = { password: string } | null;
+
+export function EmployeeForm({
   action,
   initial,
   submitLabel,
-  children,
 }: {
-  action: (prev: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
+  action: (
+    prev: ActionResult<EmployeeResult> | null,
+    formData: FormData,
+  ) => Promise<ActionResult<EmployeeResult>>;
   initial?: Partial<EmployeeFormValues>;
   submitLabel: string;
-  /** Rendered on success — e.g. the generated password. */
-  children?: (data: T) => React.ReactNode;
 }) {
   const [state, formAction] = useActionState(action, null);
   const errors = state && !state.ok ? state.fieldErrors : undefined;
 
-  if (state?.ok && children) return <>{children(state.data)}</>;
+  // The success panel is rendered here rather than handed in as a render prop
+  // by the page: a Server Component cannot pass a function to a Client
+  // Component, and doing it threw before /admin/employees/new could render.
+  if (state?.ok && state.data?.password) {
+    return (
+      <Card title="Employee created">
+        <p className="text-sm text-stone-600">
+          Share this temporary password with them directly. It is shown once and
+          cannot be retrieved again — only reset. They&apos;ll be asked to
+          change it at first sign-in.
+        </p>
+        <p className="mono mt-4 rounded-[10px] bg-stone-100 px-4 py-3 text-lg text-stone-900">
+          {state.data.password}
+        </p>
+        <div className="mt-5 flex gap-3">
+          <LinkButton href="/admin/employees" variant="primary">
+            Back to employees
+          </LinkButton>
+          <LinkButton href="/admin/employees/new">Add another</LinkButton>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <form action={formAction} className="flex flex-col gap-5">
       {state && !state.ok && <ErrorText>{state.error}</ErrorText>}
+      {state?.ok && !state.data?.password && (
+        <p className="flex items-center gap-2 rounded-[10px] bg-pine-50 px-3 py-2 text-sm text-pine-800">
+          <Check className="h-4 w-4" />
+          Saved.
+        </p>
+      )}
 
       <Card title="Details">
         <div className="grid gap-4 sm:grid-cols-2">

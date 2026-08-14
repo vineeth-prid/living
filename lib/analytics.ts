@@ -1,6 +1,7 @@
 import { and, count, eq, gte, isNull, lte, sql, sum } from "drizzle-orm";
 import { db } from "./db";
 import {
+  auditLogs,
   leadFollowups,
   leadSources,
   leads,
@@ -17,6 +18,17 @@ import {
 
 export type DateRange = { from: Date; to: Date; label: string };
 
+/** The presets offered wherever a range is chosen. */
+export const RANGE_PRESETS = [
+  { value: "today", label: "Today" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "month", label: "This month" },
+  { value: "last_month", label: "Last month" },
+  { value: "quarter", label: "Last 90 days" },
+  { value: "year", label: "Last 12 months" },
+] as const;
+
 export function resolveRange(
   preset: string | undefined,
   fromParam?: string,
@@ -26,6 +38,17 @@ export function resolveRange(
   to.setHours(23, 59, 59, 999);
   const from = new Date();
   from.setHours(0, 0, 0, 0);
+
+  // Explicit dates win over the preset. They used to need a hidden
+  // range=custom alongside them, so picking two dates and leaving the preset
+  // where it was silently reported the preset's range instead.
+  if (fromParam && toParam) {
+    const start = new Date(fromParam);
+    const end = new Date(`${toParam}T23:59:59`);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+      return { from: start, to: end, label: "Custom range" };
+    }
+  }
 
   switch (preset) {
     case "today":
@@ -47,16 +70,13 @@ export function resolveRange(
       end.setHours(23, 59, 59, 999);
       return { from: start, to: end, label: "Last month" };
     }
-    case "custom": {
-      if (fromParam && toParam) {
-        const start = new Date(fromParam);
-        const end = new Date(`${toParam}T23:59:59`);
-        if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
-          return { from: start, to: end, label: "Custom range" };
-        }
-      }
-      break;
-    }
+    case "quarter":
+      from.setDate(from.getDate() - 89);
+      return { from, to, label: "Last 90 days" };
+    case "year":
+      from.setFullYear(from.getFullYear() - 1);
+      from.setDate(from.getDate() + 1);
+      return { from, to, label: "Last 12 months" };
   }
 
   from.setDate(from.getDate() - 29);
@@ -233,6 +253,12 @@ export async function employeePerformance(f: DashboardFilters) {
       won: sql<number>`count(*) filter (where ${leads.status} = 'closed_won')::int`,
       lost: sql<number>`count(*) filter (where ${leads.status} = 'closed_lost')::int`,
       active: sql<number>`count(*) filter (where ${leads.status} not in ('closed_won','closed_lost'))::int`,
+      // Same definition as leadKpis.wonValue, so the per-person figures add up
+      // to the headline one rather than nearly doing.
+      wonValue: sql<number>`coalesce(sum(
+        case when ${leads.status} = 'closed_won'
+        then coalesce(${leads.closedValue}, ${leads.budgetMax}) else 0 end
+      ), 0)::bigint`,
     })
     .from(leads)
     .innerJoin(users, eq(users.id, leads.assignedToId))
@@ -240,6 +266,78 @@ export async function employeePerformance(f: DashboardFilters) {
     .groupBy(users.id, users.fullName)
     .orderBy(sql`count(*) desc`)
     .limit(20);
+}
+
+/**
+ * Leads created and won per bucket, for the trend on the reports page.
+ *
+ * Bucketed by day for a short range and by month for a long one — a year of
+ * daily bars is unreadable and 365 rows to render.
+ */
+export async function leadsOverTime(f: DashboardFilters) {
+  const days = Math.ceil(
+    (f.range.to.getTime() - f.range.from.getTime()) / 86_400_000,
+  );
+  const bucket = days > 92 ? "month" : days > 31 ? "week" : "day";
+
+  // Interpolated, not bound: as a parameter this is $1 in the select and $2 in
+  // the group by, which Postgres treats as two different expressions and
+  // rejects. `bucket` is one of three literals above, so there is nothing to
+  // inject.
+  const truncated = sql.raw(`date_trunc('${bucket}', created_at)`);
+
+  const rows = await db()
+    .select({
+      bucket: sql<string>`to_char(${truncated}, 'YYYY-MM-DD')`,
+      total: count(),
+      won: sql<number>`count(*) filter (where ${leads.status} = 'closed_won')::int`,
+    })
+    .from(leads)
+    .where(leadWhere(f))
+    .groupBy(truncated)
+    .orderBy(truncated);
+
+  return { bucket, rows };
+}
+
+/**
+ * Inventory added and put live during the range.
+ *
+ * Deliberately no "sold in range": the only timestamp a sale touches is
+ * updatedAt, which any later edit moves — the current-state counts in
+ * propertyKpis are the honest answer to that question.
+ */
+export async function inventoryMovement(range: DateRange) {
+  const [row] = await db()
+    .select({
+      created: sql<number>`count(*) filter (
+        where ${properties.createdAt} between ${range.from} and ${range.to}
+      )::int`,
+      published: sql<number>`count(*) filter (
+        where ${properties.publishedAt} between ${range.from} and ${range.to}
+      )::int`,
+      addedValue: sql<number>`coalesce(sum(
+        case when ${properties.createdAt} between ${range.from} and ${range.to}
+        then ${properties.priceValue} else 0 end
+      ), 0)::bigint`,
+    })
+    .from(properties)
+    .where(isNull(properties.deletedAt));
+
+  return {
+    created: row?.created ?? 0,
+    published: row?.published ?? 0,
+    addedValue: Number(row?.addedValue ?? 0),
+  };
+}
+
+/** Distinct actions in the audit log, for the reports filter. */
+export async function auditActions(): Promise<string[]> {
+  const rows = await db()
+    .selectDistinct({ action: auditLogs.action })
+    .from(auditLogs)
+    .orderBy(auditLogs.action);
+  return rows.map((r) => r.action);
 }
 
 /** Property KPIs — not date-filtered: inventory is a current-state question. */
