@@ -12,6 +12,7 @@ import {
   topPropertiesByInterest,
 } from "@/lib/analytics";
 import { employeeOptions, leadSourceOptions } from "@/lib/leads.admin";
+import { whatsappDayStats } from "@/lib/crm/whatsapp/stats";
 import {
   Card,
   FilterBar,
@@ -46,17 +47,29 @@ export default async function DashboardPage({
     city: sp.city,
   };
 
-  const [leadStats, propertyStats, sources, performance, topProperties, employees, sourceList, cities] =
-    await Promise.all([
-      leadKpis(filters),
-      propertyKpis(),
-      sourceBreakdown(filters),
-      employeePerformance(filters),
-      topPropertiesByInterest(),
-      employeeOptions(),
-      leadSourceOptions(),
-      leadCities(),
-    ]);
+  const [
+    leadStats,
+    propertyStats,
+    sources,
+    performance,
+    topProperties,
+    employees,
+    sourceList,
+    cities,
+    whatsapp,
+  ] = await Promise.all([
+    leadKpis(filters),
+    propertyKpis(),
+    sourceBreakdown(filters),
+    employeePerformance(filters),
+    topPropertiesByInterest(),
+    employeeOptions(),
+    leadSourceOptions(),
+    leadCities(),
+    // §63 — admin dashboard only. The employee workspace shows a person's own
+    // activity and none of these totals.
+    whatsappDayStats(),
+  ]);
 
   const funnel = funnelFrom(leadStats.status);
   const won = leadStats.status.closed_won ?? 0;
@@ -118,6 +131,31 @@ export default async function DashboardPage({
         <Kpi label="Pipeline value" value={inr(leadStats.pipelineValue)} href="/admin/leads/pipeline" />
         <Kpi label="Average deal" value={inr(avgDeal)} href="/admin/leads?status=closed_won" />
       </section>
+
+      {/* §63. WhatsApp operations live on the admin dashboard only — the
+          employee workspace carries a person's own activity and none of this. */}
+      <Card title="WhatsApp (last 24 hours)" className="mb-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+          <Mini label="Received" value={whatsapp.inbound} />
+          <Mini label="Sent" value={whatsapp.outbound} />
+          <Mini label="Commands run" value={whatsapp.commandsExecuted} />
+          <Mini label="Clarifying" value={whatsapp.commandsClarifying} />
+          <Mini label="Failed" value={whatsapp.commandsFailed + whatsapp.failedMessages} />
+          <Mini label="Leads created" value={whatsapp.leadsCreated} />
+          <Mini label="Follow-ups set" value={whatsapp.followupsCreated} />
+        </div>
+        <p className="mt-4 text-xs text-stone-500">
+          Connection is{" "}
+          <span className="text-stone-700">{whatsapp.status ?? "not configured"}</span>
+          {whatsapp.lastInboundAt
+            ? `, last message in ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(whatsapp.lastInboundAt)}.`
+            : ". Nothing received yet."}{" "}
+          <Link href="/admin/settings/integrations/whatsapp" className="text-pine-700 hover:underline">
+            Manage the integration
+          </Link>
+          .
+        </p>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Conversion funnel">

@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/auth/dal";
 import { db } from "@/lib/db";
 import { auditLogs, users } from "@/lib/db/schema";
 import { Card, PageHeader } from "@/components/admin/ui";
+import { maskPhone } from "@/lib/integrations/whatsapp/phone";
+import { EmployeeWhatsAppCard } from "../whatsapp-card";
 import { EmployeeForm } from "../employee-form";
 import { updateEmployee } from "../actions";
 
@@ -30,6 +32,10 @@ export default async function EditEmployeePage({
       employeeCode: users.employeeCode,
       permissions: users.permissions,
       joinedAt: users.joinedAt,
+      whatsappEnabled: users.whatsappEnabled,
+      whatsappCrmEnabled: users.whatsappCrmEnabled,
+      whatsappNumber: users.whatsappNumber,
+      whatsappLastSeenAt: users.whatsappLastSeenAt,
     })
     .from(users)
     .where(eq(users.id, id))
@@ -72,6 +78,24 @@ export default async function EditEmployeePage({
             }}
           />
         </div>
+
+        {/* §8: WhatsApp configuration where an admin manages the person, not
+            only on the integration page. Same server action backs both. */}
+        <EmployeeWhatsAppCard
+          employeeId={employee.id}
+          whatsappEnabled={employee.whatsappEnabled}
+          whatsappCrmEnabled={employee.whatsappCrmEnabled}
+          whatsappNumber={employee.whatsappNumber}
+          mobile={employee.mobile ? maskPhone(employee.mobile.replace(/\D/g, "")) : null}
+          lastSeenLabel={
+            employee.whatsappLastSeenAt
+              ? new Intl.DateTimeFormat("en-IN", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }).format(employee.whatsappLastSeenAt)
+              : "never"
+          }
+        />
 
         <Card title="Recent activity">
           {activity.length === 0 ? (

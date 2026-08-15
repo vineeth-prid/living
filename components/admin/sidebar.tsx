@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   ReceiptIndianRupee,
   Settings,
   Upload,
@@ -74,6 +75,7 @@ export function Sidebar({
               { href: "/admin/employees", label: "Employees", icon: UserSquare2 },
               { href: "/admin/reports", label: "Reports", icon: ChartNoAxesColumn },
               { href: "/admin/settings", label: "Settings", icon: Settings },
+              { href: "/admin/settings/integrations/whatsapp", label: "WhatsApp", icon: MessageCircle },
             ],
           },
         ]
@@ -82,7 +84,11 @@ export function Sidebar({
 
   // /admin/properties stays lit on /admin/properties/[id], but must not also
   // light up while a sibling with its own entry is open.
-  const SIBLINGS = ["/admin/properties/new", "/admin/properties/import"];
+  const SIBLINGS = [
+    "/admin/properties/new",
+    "/admin/properties/import",
+    "/admin/settings/integrations/whatsapp",
+  ];
 
   const isActive = (href: string) =>
     pathname === href ||

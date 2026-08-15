@@ -132,6 +132,30 @@ export const users = pgTable(
     joinedAt: timestamp("joined_at", { withTimezone: true }),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
 
+    // Two flags, not one, because they answer different questions.
+    //
+    // `whatsappEnabled` — Living may message this person: lead assignments,
+    // follow-up notices. Reachability.
+    // `whatsappCrmEnabled` — this person may drive the CRM from their phone.
+    // Authority.
+    //
+    // Both default off. A number that merely appears in `mobile` must not be
+    // able to do either, or adding an employee record would silently open a
+    // command channel that bypasses the login page.
+    whatsappEnabled: boolean("whatsapp_enabled").notNull().default(false),
+    whatsappCrmEnabled: boolean("whatsapp_crm_enabled").notNull().default(false),
+    /** E.164 without the plus. Falls back to `mobile` when not set. */
+    whatsappNumber: text("whatsapp_number"),
+    whatsappLastSeenAt: timestamp("whatsapp_last_seen_at", { withTimezone: true }),
+    /**
+     * Optional narrowing of what this person may do over WhatsApp (§13).
+     *
+     * Empty means "whatever their role and permissions already allow" — the
+     * common case. A non-empty list is a further restriction and never a grant:
+     * naming PUBLISH_PROPERTY here does not confer the permission.
+     */
+    whatsappScope: text("whatsapp_scope").array().notNull().default([]),
+
     // Brute-force throttle (§4). Cleared on every successful login.
     failedLoginCount: integer("failed_login_count").notNull().default(0),
     lockedUntil: timestamp("locked_until", { withTimezone: true }),
@@ -701,5 +725,333 @@ export const auditLogs = pgTable(
   (t) => [
     index("audit_logs_entity_idx").on(t.entity, t.entityId),
     index("audit_logs_actor_idx").on(t.actorId, t.createdAt),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// WhatsApp integration
+//
+// Deliberately provider-neutral: every table carries `provider`, and no column
+// type names OpenWA. Moving to Meta's Cloud API later is a new provider
+// implementation, not a migration.
+//
+// None of this sits on the CRM's critical path. A WhatsApp outage costs
+// messages, never a lead or a listing.
+// ---------------------------------------------------------------------------
+
+export const WHATSAPP_PROVIDERS = ["openwa", "meta"] as const;
+export type WhatsAppProviderName = (typeof WHATSAPP_PROVIDERS)[number];
+
+export const WHATSAPP_SESSION_STATUSES = [
+  "connected",
+  "connecting",
+  "disconnected",
+  "unknown",
+] as const;
+export type WhatsAppSessionStatus = (typeof WHATSAPP_SESSION_STATUSES)[number];
+
+/** Who the far end of a conversation is. Decides what they may do. */
+export const WHATSAPP_CONTACT_TYPES = ["employee", "customer", "unknown"] as const;
+export type WhatsAppContactType = (typeof WHATSAPP_CONTACT_TYPES)[number];
+
+export const WHATSAPP_DIRECTIONS = ["inbound", "outbound"] as const;
+export type WhatsAppDirection = (typeof WHATSAPP_DIRECTIONS)[number];
+
+export const WHATSAPP_MESSAGE_STATUSES = [
+  "pending",
+  "processed",
+  "ignored",
+  "failed",
+] as const;
+export type WhatsAppMessageStatus = (typeof WHATSAPP_MESSAGE_STATUSES)[number];
+
+export const WHATSAPP_EVENT_STATUSES = [
+  "received",
+  "processed",
+  "failed",
+  "rejected",
+] as const;
+export type WhatsAppEventStatus = (typeof WHATSAPP_EVENT_STATUSES)[number];
+
+export const COMMAND_EXECUTION_STATUSES = [
+  "awaiting_confirmation",
+  "awaiting_clarification",
+  "executed",
+  "rejected",
+  "failed",
+  "cancelled",
+  // Distinct from "still waiting": a confirmation nobody answered in time.
+  // Without it an unanswered question sits as awaiting_confirmation for ever
+  // and the audit cannot tell "ignored" from "in flight".
+  "expired",
+] as const;
+export type CommandExecutionStatus = (typeof COMMAND_EXECUTION_STATUSES)[number];
+
+/**
+ * The WhatsApp connection itself. Plural because the number Living answers on
+ * will not stay the same one forever.
+ */
+export const whatsappSessions = pgTable(
+  "whatsapp_sessions",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").$type<WhatsAppProviderName>().notNull(),
+    /** The provider's own id — an OpenWA session UUID. */
+    providerSessionId: text("provider_session_id").notNull(),
+    displayName: text("display_name"),
+    phoneNumber: text("phone_number"),
+    status: text("status")
+      .$type<WhatsAppSessionStatus>()
+      .notNull()
+      .default("unknown"),
+    isActive: boolean("is_active").notNull().default(true),
+    webhookConfiguredAt: timestamp("webhook_configured_at", { withTimezone: true }),
+    lastConnectedAt: timestamp("last_connected_at", { withTimezone: true }),
+    lastDisconnectedAt: timestamp("last_disconnected_at", { withTimezone: true }),
+    /**
+     * Last time an API call to the provider succeeded (§8). Distinct from
+     * lastConnectedAt: the gateway can be answering happily about a session
+     * that is disconnected, and telling those apart is the point.
+     */
+    lastApiOkAt: timestamp("last_api_ok_at", { withTimezone: true }),
+    lastInboundAt: timestamp("last_inbound_at", { withTimezone: true }),
+    lastOutboundAt: timestamp("last_outbound_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_sessions_provider_idx").on(
+      t.provider,
+      t.providerSessionId,
+    ),
+  ],
+);
+
+/**
+ * A phone number Living has seen, and what it turned out to be.
+ *
+ * `phoneNumber` is E.164 without the plus (919876543210). `nationalDigits` is
+ * the last ten, which is how numbers are matched against users.mobile and
+ * leads.mobile — lib/leads.ts already compares on the last ten, so this keeps
+ * one convention rather than adding a second.
+ */
+export const whatsappContacts = pgTable(
+  "whatsapp_contacts",
+  {
+    id: text("id").primaryKey(),
+    phoneNumber: text("phone_number").notNull(),
+    nationalDigits: text("national_digits").notNull(),
+    /** The provider's addressing form, e.g. 919876543210@c.us. */
+    whatsappId: text("whatsapp_id"),
+    displayName: text("display_name"),
+    contactType: text("contact_type")
+      .$type<WhatsAppContactType>()
+      .notNull()
+      .default("unknown"),
+    employeeId: text("employee_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    leadId: text("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    /**
+     * Whether Living will act on anything from this number. Default true;
+     * clearing it is how a nuisance number is silenced.
+     *
+     * Enforced in inbound routing: a disallowed contact's message is still
+     * stored — the record of what arrived is worth keeping — but nothing is
+     * done with it and nothing is sent back.
+     *
+     * Replaces an earlier `is_blocked`, which was never read by anything. The
+     * two migrations that follow add this, carry the old values across
+     * inverted, then drop the old column — a plain rename would have flipped
+     * every row's meaning.
+     */
+    isAllowed: boolean("is_allowed").notNull().default(true),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_contacts_phone_idx").on(t.phoneNumber),
+    index("whatsapp_contacts_national_idx").on(t.nationalDigits),
+    index("whatsapp_contacts_employee_idx").on(t.employeeId),
+    index("whatsapp_contacts_lead_idx").on(t.leadId),
+  ],
+);
+
+/**
+ * A thread with one contact, and whatever CRM context it has acquired.
+ *
+ * Every association is optional: an employee thread has no lead, and a customer
+ * who has only said "hi" has no property. Requiring a lead would mean inventing
+ * one to hold a conversation, which is how duplicate leads start.
+ */
+export const whatsappConversations = pgTable(
+  "whatsapp_conversations",
+  {
+    id: text("id").primaryKey(),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => whatsappSessions.id, { onDelete: "cascade" }),
+    contactId: text("contact_id")
+      .notNull()
+      .references(() => whatsappContacts.id, { onDelete: "cascade" }),
+    /** Provider chat id — the thread's address. */
+    chatId: text("chat_id").notNull(),
+    employeeId: text("employee_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    leadId: text("lead_id").references(() => leads.id, { onDelete: "set null" }),
+    propertyId: text("property_id").references(() => properties.id, {
+      onDelete: "set null",
+    }),
+    lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_conversations_chat_idx").on(t.sessionId, t.chatId),
+    index("whatsapp_conversations_lead_idx").on(t.leadId),
+  ],
+);
+
+export const whatsappMessages = pgTable(
+  "whatsapp_messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => whatsappConversations.id, { onDelete: "cascade" }),
+    providerMessageId: text("provider_message_id"),
+    direction: text("direction").$type<WhatsAppDirection>().notNull(),
+    senderPhone: text("sender_phone"),
+    recipientPhone: text("recipient_phone"),
+    messageType: text("message_type").notNull().default("text"),
+    text: text("text"),
+    /** Type, size and MinIO key once media has been pulled across. */
+    mediaMetadata: jsonb("media_metadata"),
+    status: text("status")
+      .$type<WhatsAppMessageStatus>()
+      .notNull()
+      .default("pending"),
+    error: text("error"),
+    /** Points at whatsapp_webhook_events, where the raw payload lives. */
+    eventId: text("event_id"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("whatsapp_messages_conversation_idx").on(
+      t.conversationId,
+      t.createdAt,
+    ),
+    uniqueIndex("whatsapp_messages_provider_idx").on(t.providerMessageId),
+  ],
+);
+
+/**
+ * The idempotency ledger. A provider retry must not book a second follow-up.
+ *
+ * The unique index on (provider, idempotencyKey) is the mechanism: the insert
+ * fails, rather than the code checking first and losing a race to a concurrent
+ * redelivery of the same event.
+ */
+export const whatsappWebhookEvents = pgTable(
+  "whatsapp_webhook_events",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").$type<WhatsAppProviderName>().notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    deliveryId: text("delivery_id"),
+    event: text("event").notNull(),
+    providerSessionId: text("provider_session_id"),
+    providerMessageId: text("provider_message_id"),
+    status: text("status")
+      .$type<WhatsAppEventStatus>()
+      .notNull()
+      .default("received"),
+    error: text("error"),
+    /** Kept for debugging. Pruned by age — see docs/whatsapp.md. */
+    payload: jsonb("payload"),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_webhook_events_key_idx").on(
+      t.provider,
+      t.idempotencyKey,
+    ),
+    index("whatsapp_webhook_events_received_idx").on(t.receivedAt),
+  ],
+);
+
+/**
+ * Every CRM action an AI-parsed message asked for — executed, refused, or still
+ * waiting on a yes. §32: a change nobody can account for is worse than no
+ * change, and this is also where a pending confirmation lives between messages.
+ */
+export const whatsappCommandExecutions = pgTable(
+  "whatsapp_command_executions",
+  {
+    id: text("id").primaryKey(),
+    messageId: text("message_id").references(() => whatsappMessages.id, {
+      onDelete: "set null",
+    }),
+    conversationId: text("conversation_id").references(
+      () => whatsappConversations.id,
+      { onDelete: "set null" },
+    ),
+    employeeId: text("employee_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    senderPhone: text("sender_phone"),
+    /** Verbatim, so a misparse can be replayed against a corrected prompt. */
+    originalText: text("original_text"),
+    intent: text("intent").notNull(),
+    confidence: doublePrecision("confidence"),
+    model: text("model"),
+    entities: jsonb("entities"),
+    status: text("status")
+      .$type<CommandExecutionStatus>()
+      .notNull()
+      .default("executed"),
+    requiresConfirmation: boolean("requires_confirmation")
+      .notNull()
+      .default(false),
+    /** Set when a confirmation is answered; null while it is outstanding. */
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    /** Pending confirmations expire rather than linger and fire days later. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    targetEntity: text("target_entity"),
+    targetEntityId: text("target_entity_id"),
+    resultSummary: text("result_summary"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("whatsapp_commands_employee_idx").on(t.employeeId, t.createdAt),
+    index("whatsapp_commands_status_idx").on(t.status, t.expiresAt),
+    index("whatsapp_commands_conversation_idx").on(
+      t.conversationId,
+      t.createdAt,
+    ),
   ],
 );
