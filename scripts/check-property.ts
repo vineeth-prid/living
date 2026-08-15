@@ -10,6 +10,7 @@
 import assert from "node:assert/strict";
 import { parseCsv, toCsv } from "../lib/csv";
 import { priceLabelFor, propertySchema, seoFor } from "../lib/validation/property";
+import { SERVER_ACTION_BODY_LIMIT, UPLOAD_LIMITS } from "../lib/upload-limits";
 import {
   IMPORT_COLUMNS,
   mapHeaders,
@@ -129,6 +130,65 @@ function main() {
       "a rental needs no asking price",
     );
     assert.equal(post({ ...MINIMAL, summary: "Nice." }).success, false);
+  });
+
+  // --- owner contact block --------------------------------------------------
+  check("owner numbers are stored canonical, whatever was typed", () => {
+    const result = post({
+      ...MINIMAL,
+      sellerName: "Ramesh Nair",
+      sellerWhatsapp: "+91 98765 43210",
+      sellerAltContact: "+971 50 123 4567",
+      sellerEmail: "ramesh@example.com",
+      sellerWhatsappOptIn: "on",
+    });
+    assert.equal(result.success, true, JSON.stringify(errorsOf(result)));
+    if (!result.success) return;
+
+    // One number written three ways has to end up as one number, or matching
+    // it against a WhatsApp contact later silently fails.
+    assert.equal(result.data.sellerWhatsapp, "919876543210");
+    // A number that brought its own country code keeps it.
+    assert.equal(result.data.sellerAltContact, "971501234567");
+    assert.equal(result.data.sellerWhatsappOptIn, true);
+  });
+
+  check("consent is off unless it was actually given", () => {
+    const result = post({ ...MINIMAL, sellerWhatsapp: "9876543210" });
+    assert.equal(result.success, true);
+    // Having someone's number is not permission to message it.
+    if (result.success) assert.equal(result.data.sellerWhatsappOptIn, false);
+  });
+
+  check("a mistyped owner number is refused, not silently dropped", () => {
+    // The failure this catches: an invalid number becoming `undefined` rather
+    // than an error, so the field looks saved and the send fails weeks later.
+    for (const bad of ["12345", "not a number", "+91 9876"]) {
+      const result = post({ ...MINIMAL, sellerWhatsapp: bad });
+      assert.equal(result.success, false, `"${bad}" was accepted`);
+    }
+    assert.equal(post({ ...MINIMAL, sellerEmail: "not-an-email" }).success, false);
+    // Blank stays blank — none of these fields are required.
+    const empty = post({ ...MINIMAL, sellerWhatsapp: "", sellerEmail: "" });
+    assert.equal(empty.success, true, JSON.stringify(errorsOf(empty)));
+  });
+
+  check("a Server Action can carry a real photograph", () => {
+    // The bug: the framework caps action bodies at 1 MB by default, while
+    // validateUpload allowed 12 MB images — so every real photo was refused
+    // before the action ran. These two numbers must not disagree again.
+    assert.ok(
+      SERVER_ACTION_BODY_LIMIT > UPLOAD_LIMITS.image,
+      "a single permitted image cannot fit in an action request",
+    );
+    assert.ok(
+      SERVER_ACTION_BODY_LIMIT >= UPLOAD_LIMITS.video,
+      "a permitted video cannot fit in an action request",
+    );
+    assert.ok(
+      SERVER_ACTION_BODY_LIMIT >= UPLOAD_LIMITS.document,
+      "a permitted document cannot fit in an action request",
+    );
   });
 
   // --- §5: SEO derived from the listing, not typed ---------------------------

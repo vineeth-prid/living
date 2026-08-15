@@ -190,6 +190,10 @@ export async function createProperty(
       internalNotes: input.internalNotes,
       sellerName: input.sellerName,
       sellerContact: input.sellerContact,
+      sellerWhatsapp: input.sellerWhatsapp,
+      sellerAltContact: input.sellerAltContact,
+      sellerEmail: input.sellerEmail,
+      sellerWhatsappOptIn: input.sellerWhatsappOptIn,
 
       beds: input.beds ?? 0,
       baths: input.baths ?? 0,
@@ -313,6 +317,10 @@ export async function updateProperty(
       internalNotes: input.internalNotes,
       sellerName: input.sellerName,
       sellerContact: input.sellerContact,
+      sellerWhatsapp: input.sellerWhatsapp,
+      sellerAltContact: input.sellerAltContact,
+      sellerEmail: input.sellerEmail,
+      sellerWhatsappOptIn: input.sellerWhatsappOptIn,
 
       beds: input.beds ?? 0,
       baths: input.baths ?? 0,

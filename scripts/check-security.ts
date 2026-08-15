@@ -37,6 +37,10 @@ async function main() {
   // The single most important check here. If someone adds finalPrice to the
   // allowlist to "just show it on the card", this fails before it ships.
   const FORBIDDEN_PUBLIC_FIELDS = [
+    "sellerWhatsapp",
+    "sellerAltContact",
+    "sellerEmail",
+    "sellerWhatsappOptIn",
     "finalPrice",
     "internalNotes",
     "sellerName",

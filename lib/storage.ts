@@ -2,6 +2,7 @@ import { Client } from "minio";
 import { randomBytes } from "node:crypto";
 import { extname } from "node:path";
 import { Readable } from "node:stream";
+import { UPLOAD_LIMITS, asMb } from "./upload-limits";
 
 // Write side of the existing media architecture. Reads keep going through
 // NEXT_PUBLIC_IMAGE_CDN exactly as before (lib/images.ts) — this only adds the
@@ -45,13 +46,16 @@ const ALLOWED_IMAGE_TYPES = [
   "image/avif",
 ];
 const ALLOWED_VIDEO_TYPES = ["video/mp4", "video/webm"];
-const ALLOWED_DOC_TYPES = ["application/pdf"];
-
-const MAX_UPLOAD_BYTES = {
-  image: 12 * 1024 * 1024,
-  video: 200 * 1024 * 1024,
-  document: 25 * 1024 * 1024,
-} as const;
+// Property paperwork is rarely only PDFs — an agreement scan arrives as a
+// photo, a rate sheet as a spreadsheet.
+const ALLOWED_DOC_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+];
 
 /**
  * Content type is validated against the field's expected kind rather than
@@ -75,9 +79,8 @@ export function validateUpload(
   if (!allowed.includes(file.type)) {
     return `${file.name}: ${file.type || "unknown type"} isn't allowed here.`;
   }
-  if (file.size > MAX_UPLOAD_BYTES[group]) {
-    const mb = Math.round(MAX_UPLOAD_BYTES[group] / (1024 * 1024));
-    return `${file.name} is larger than ${mb} MB.`;
+  if (file.size > UPLOAD_LIMITS[group]) {
+    return `${file.name} is larger than ${asMb(UPLOAD_LIMITS[group])}.`;
   }
   if (file.size === 0) return `${file.name} is empty.`;
   return null;

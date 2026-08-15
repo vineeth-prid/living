@@ -40,6 +40,7 @@ const STEP_OF: Record<string, number> = {
   occupancy: 2, suitableFor: 2, leasePotential: 2,
   askingPrice: 3, priceLabel: 3, rentalIncome: 3, rentalFrequency: 3,
   rentalYield: 3, finalPrice: 3, internalNotes: 3, sellerName: 3, sellerContact: 3,
+  sellerWhatsapp: 3, sellerAltContact: 3, sellerEmail: 3, sellerWhatsappOptIn: 3,
 };
 
 const AREA_UNIT_OPTIONS = [
@@ -405,8 +406,52 @@ export function PropertyForm({
             </p>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Final price (₹)"><input name="finalPrice" defaultValue={val("finalPrice")} className={inputClass} /></Field>
-              <Field label="Seller name"><input name="sellerName" defaultValue={val("sellerName")} className={inputClass} /></Field>
-              <Field label="Seller contact"><input name="sellerContact" defaultValue={val("sellerContact")} className={inputClass} /></Field>
+              <Field label="Owner / seller name"><input name="sellerName" defaultValue={val("sellerName")} className={inputClass} /></Field>
+              <Field
+                label="Contact number"
+                error={errors?.sellerContact?.[0]}
+                hint="Include the country code."
+              >
+                <input name="sellerContact" defaultValue={val("sellerContact")} className={inputClass} placeholder="+91 98765 43210" />
+              </Field>
+              <Field
+                label="WhatsApp number"
+                error={errors?.sellerWhatsapp?.[0]}
+                hint="Leave blank if it's the same as above."
+              >
+                <input name="sellerWhatsapp" defaultValue={val("sellerWhatsapp")} className={inputClass} placeholder="+91 98765 43210" />
+              </Field>
+              <Field
+                label="Alternate number"
+                error={errors?.sellerAltContact?.[0]}
+                hint="A second number, with country code."
+              >
+                <input name="sellerAltContact" defaultValue={val("sellerAltContact")} className={inputClass} placeholder="+971 50 123 4567" />
+              </Field>
+              <Field label="Owner email" error={errors?.sellerEmail?.[0]}>
+                <input name="sellerEmail" type="email" defaultValue={val("sellerEmail")} className={inputClass} />
+              </Field>
+
+              <div className="sm:col-span-2">
+                <label className="flex items-start gap-2.5">
+                  <input
+                    type="checkbox"
+                    name="sellerWhatsappOptIn"
+                    defaultChecked={Boolean(initial?.sellerWhatsappOptIn)}
+                    className="mt-0.5 h-4 w-4 accent-[var(--color-pine-600)]"
+                  />
+                  <span>
+                    <span className="block text-sm text-stone-800">
+                      Living may contact this owner on WhatsApp
+                    </span>
+                    <span className="block text-xs text-stone-500">
+                      Off by default. Having someone&apos;s number is not consent
+                      to message it.
+                    </span>
+                  </span>
+                </label>
+              </div>
+
               <Field label="Internal notes" className="sm:col-span-2">
                 <textarea name="internalNotes" rows={4} defaultValue={val("internalNotes")} className={cx(inputClass, "resize-y")} />
               </Field>

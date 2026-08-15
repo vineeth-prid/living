@@ -66,7 +66,11 @@ export const IMPORT_COLUMNS: Column[] = [
   { header: "suitableFor", field: "suitableFor", hint: "" },
   { header: "leasePotential", field: "leasePotential", hint: "" },
   { header: "sellerName", field: "sellerName", hint: "Internal — never shown publicly" },
-  { header: "sellerContact", field: "sellerContact", hint: "Internal — never shown publicly" },
+  { header: "sellerContact", field: "sellerContact", hint: "Internal — include the country code" },
+  { header: "sellerWhatsapp", field: "sellerWhatsapp", hint: "Internal — include the country code" },
+  { header: "sellerAltContact", field: "sellerAltContact", hint: "Internal — a second number, with country code" },
+  { header: "sellerEmail", field: "sellerEmail", hint: "Internal — never shown publicly" },
+  { header: "sellerWhatsappOptIn", field: "sellerWhatsappOptIn", hint: "yes / no (default no). Consent to message the owner." },
   { header: "internalNotes", field: "internalNotes", hint: "Internal — never shown publicly" },
 ];
 
@@ -133,7 +137,11 @@ export function rowToFormData(
       continue;
     }
 
-    if (column.field === "addressIsPublic" || column.field === "hasBuilding") {
+    if (
+      column.field === "addressIsPublic" ||
+      column.field === "hasBuilding" ||
+      column.field === "sellerWhatsappOptIn"
+    ) {
       // Checkboxes: an untouched one submits nothing at all, so a "no" cell
       // has to append nothing rather than an empty string.
       if (TRUTHY.includes(value.toLowerCase())) formData.set(column.field, "on");

@@ -20,6 +20,7 @@ import {
   inputClass,
 } from "@/components/admin/ui";
 import type { ActionResult } from "@/lib/auth/dal";
+import { UPLOAD_LIMITS, asMb } from "@/lib/upload-limits";
 
 export type MediaItem = {
   id: string;
@@ -40,6 +41,9 @@ function UploadButton() {
   );
 }
 
+/** Which kinds reach the website, and which never do (§10). */
+const PUBLIC_KINDS = ["image", "floor_plan"];
+
 export function MediaManager({
   propertyId,
   media,
@@ -57,6 +61,7 @@ export function MediaManager({
   const [pending, start] = useTransition();
   // Optimistic ordering so arrow clicks feel instant.
   const [items, setItems] = useState(media);
+  const [tooBig, setTooBig] = useState<string | null>(null);
 
   // …but the server stays the source of truth. Without this, `items` kept its
   // initial value for the life of the component: an upload revalidated the
@@ -90,7 +95,43 @@ export function MediaManager({
         </p>
       )}
 
-      <form action={formAction} className="mb-6 flex flex-wrap items-end gap-3">
+      {tooBig && (
+        <div className="mb-4">
+          <ErrorText>{tooBig}</ErrorText>
+        </div>
+      )}
+
+      <form
+        action={formAction}
+        onSubmit={(event) => {
+          const input = event.currentTarget.elements.namedItem(
+            "files",
+          ) as HTMLInputElement | null;
+          const kindInput = event.currentTarget.elements.namedItem(
+            "kind",
+          ) as HTMLSelectElement | null;
+          const group =
+            kindInput?.value === "video"
+              ? "video"
+              : kindInput?.value === "document"
+                ? "document"
+                : "image";
+          const limit = UPLOAD_LIMITS[group];
+
+          const oversized = Array.from(input?.files ?? []).filter(
+            (file) => file.size > limit,
+          );
+          if (oversized.length) {
+            event.preventDefault();
+            setTooBig(
+              `${oversized.map((f) => f.name).join(", ")} — over the ${asMb(limit)} limit for ${group}s. Nothing was uploaded.`,
+            );
+            return;
+          }
+          setTooBig(null);
+        }}
+        className="mb-6 flex flex-wrap items-end gap-3"
+      >
         {state && !state.ok && (
           <div className="w-full">
             <ErrorText>{state.error}</ErrorText>
@@ -124,8 +165,9 @@ export function MediaManager({
           be published.
         </p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((item, index) => (
+        <Section
+          items={items}
+          renderItem={(item, index) => (
             <li
               key={item.id}
               className="overflow-hidden rounded-[12px] border border-stone-200 bg-white"
@@ -197,10 +239,53 @@ export function MediaManager({
                 </div>
               </div>
             </li>
-          ))}
-        </ul>
+          )}
+        />
       )}
     </Card>
+  );
+}
+
+/**
+ * Photos and plans in one grid, documents in another.
+ *
+ * The rule that documents and sketches stay off the website already lives in
+ * attachMedia; showing them apart is what makes it visible to whoever is
+ * uploading a signed agreement.
+ */
+function Section({
+  items,
+  renderItem,
+}: {
+  items: MediaItem[];
+  renderItem: (item: MediaItem, index: number) => React.ReactNode;
+}) {
+  const shown = items.filter((item) => PUBLIC_KINDS.includes(item.kind));
+  const internal = items.filter((item) => !PUBLIC_KINDS.includes(item.kind));
+
+  return (
+    <>
+      {shown.length > 0 && (
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {shown.map((item) => renderItem(item, items.indexOf(item)))}
+        </ul>
+      )}
+
+      {internal.length > 0 && (
+        <>
+          <h3 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-stone-500">
+            Documents & attachments · internal
+          </h3>
+          <p className="mb-3 text-xs text-stone-500">
+            Never shown on the website or to a customer. Agreements, tax
+            receipts, sketches and anything else that belongs to the file.
+          </p>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {internal.map((item) => renderItem(item, items.indexOf(item)))}
+          </ul>
+        </>
+      )}
+    </>
   );
 }
 

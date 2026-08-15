@@ -281,6 +281,22 @@ export const properties = pgTable(
     internalNotes: text("internal_notes"),
     sellerName: text("seller_name"),
     sellerContact: text("seller_contact"),
+    /**
+     * Owner contact detail. Internal like the rest of this block — none of it
+     * is in the public projection, and check-security.ts asserts that.
+     *
+     * The two numbers are stored canonical (E.164 digits, no plus) so they can
+     * be dialled or messaged without re-parsing, and so a number written three
+     * different ways is still one number.
+     */
+    sellerWhatsapp: text("seller_whatsapp"),
+    sellerAltContact: text("seller_alt_contact"),
+    sellerEmail: text("seller_email"),
+    /**
+     * Whether Living may contact this owner on WhatsApp. Off by default: an
+     * owner's number appearing on a record is not consent to message it.
+     */
+    sellerWhatsappOptIn: boolean("seller_whatsapp_opt_in").notNull().default(false),
 
     // SEO
     seoTitle: text("seo_title"),

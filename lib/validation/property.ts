@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalisePhone } from "@/lib/phone";
 import {
   AREA_UNITS,
   COMMERCIAL_KINDS,
@@ -49,6 +50,26 @@ const checkbox = z
   .union([z.literal("on"), z.literal("true"), z.literal("false"), z.literal(""), z.null()])
   .optional()
   .transform((v) => v === "on" || v === "true");
+
+/**
+ * A phone number, normalised to E.164 digits without the plus.
+ *
+ * A country code is always applied: a bare ten-digit number gets Living's
+ * default, anything already carrying its own keeps it. Rejecting what cannot
+ * be a number beats storing a typo that fails silently at dial time.
+ */
+const optionalPhone = z
+  .string()
+  .trim()
+  .optional()
+  // null means "given, and not a phone number" — distinct from undefined,
+  // which means "not given". Collapsing the two would drop a typo silently.
+  .transform((v) => (v ? (normalisePhone(v)?.phoneNumber ?? null) : undefined))
+  .refine(
+    (v) => v !== null,
+    "That doesn't look like a phone number — include the country code.",
+  )
+  .transform((v) => v ?? undefined);
 
 /**
  * A `<select>` whose placeholder option is "—" submits "", which no enum
@@ -140,6 +161,16 @@ export const propertySchema = z
     internalNotes: optionalText,
     sellerName: optionalText,
     sellerContact: optionalText,
+    // Stored canonical so one number written three ways is still one number.
+    sellerWhatsapp: optionalPhone,
+    sellerAltContact: optionalPhone,
+    sellerEmail: z
+      .string()
+      .trim()
+      .email("Enter a valid email.")
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    sellerWhatsappOptIn: checkbox,
     // No seoTitle/seoDescription: they're derived by seoFor() below.
   })
   .refine(
