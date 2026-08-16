@@ -188,7 +188,7 @@ function PropertyDialog({
               <MapPin className="h-4 w-4" strokeWidth={1.6} />
               {property.locality}, {property.city}
             </div>
-            <h2 className="mt-2 font-display text-4xl font-light text-ink">
+            <h2 className="mt-2 font-display text-4xl text-ink">
               {property.name}
             </h2>
             <p className="mt-3 text-lg leading-relaxed text-body">
@@ -200,7 +200,7 @@ function PropertyDialog({
               {property.details.map((d) => (
                 <div key={d.label}>
                   <dt className="text-xs text-muted">{d.label}</dt>
-                  <dd className="mt-0.5 text-[15px] text-ink">{d.value}</dd>
+                  <dd className="mt-0.5 text-ui text-ink">{d.value}</dd>
                 </div>
               ))}
             </dl>
@@ -208,7 +208,7 @@ function PropertyDialog({
             <h3 className="mt-8 eyebrow">Amenities</h3>
             <ul className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               {property.amenities.map((a) => (
-                <li key={a} className="flex items-center gap-2.5 text-[15px] text-body">
+                <li key={a} className="flex items-center gap-2.5 text-ui text-body">
                   <Check className="h-4 w-4 shrink-0 text-pine-500" strokeWidth={2} />
                   {a}
                 </li>

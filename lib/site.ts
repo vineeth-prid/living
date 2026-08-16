@@ -45,13 +45,46 @@ export function pageMeta(
   };
 }
 
+/**
+ * The primary navigation.
+ *
+ * `children` turns an item into a menu. Services has three distinct offers
+ * that were only reachable by landing on the page and scrolling — naming them
+ * in the nav is the difference between "they have services" and "they do the
+ * thing I came for".
+ *
+ * The parent stays a real link in every case: a menu that cannot be clicked
+ * strands anyone on a touch screen or a keyboard.
+ */
 export const nav = [
   { label: "Home", href: "/" },
-  { label: "Our services", href: "/services" },
+  {
+    label: "Our services",
+    href: "/services",
+    children: [
+      {
+        label: "Property buying",
+        href: "/services#buying",
+        blurb: "Find a home in Kochi, with someone on your side.",
+      },
+      {
+        label: "Sell your property",
+        href: "/services#selling",
+        blurb: "Valuation, photography, marketing and the closing.",
+      },
+      {
+        label: "NRI concierge",
+        href: "/services#nri",
+        blurb: "Your property looked after while you are abroad.",
+      },
+    ],
+  },
   { label: "Platform", href: "/platform" },
   { label: "About Living", href: "/about" },
   { label: "Contact", href: "/contact" },
 ] as const;
+
+export type NavItem = (typeof nav)[number];
 
 export const waLink = (msg?: string) =>
   `https://wa.me/${site.whatsapp}${msg ? `?text=${encodeURIComponent(msg)}` : ""}`;

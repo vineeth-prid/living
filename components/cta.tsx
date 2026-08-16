@@ -15,15 +15,15 @@ export function CtaBand({
   message?: string;
 }) {
   const btn =
-    "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[12px] px-6 py-3 text-[15px] font-medium transition-all duration-200 ease-[var(--ease-calm)] active:scale-[0.98]";
+    "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[12px] px-6 py-3 text-ui font-medium transition-all duration-200 ease-[var(--ease-calm)] active:scale-[0.98]";
   return (
     <section className="bg-pine-700">
-      <div className="shell py-16 md:py-24">
+      <div className="shell section">
         <Reveal className="max-w-2xl">
           <Eyebrow>
             <span className="text-clay-300">{eyebrow}</span>
           </Eyebrow>
-          <h2 className="mt-5 font-display font-light text-stone-50 display-xl">
+          <h2 className="mt-5 font-display text-stone-50 display-xl">
             {title}
           </h2>
           <p className="mt-6 max-w-lg text-lg leading-relaxed text-pine-100">

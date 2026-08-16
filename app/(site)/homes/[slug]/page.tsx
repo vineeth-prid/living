@@ -114,7 +114,7 @@ export default async function PropertyPage({
               <span className="inline-flex rounded-full bg-stone-50/90 px-3 py-1 text-xs font-medium text-pine-800 backdrop-blur">
                 {property.status}
               </span>
-              <h1 className="display-lg mt-3 font-display font-light text-stone-50">
+              <h1 className="display-lg mt-3 font-display text-stone-50">
                 {property.name}
               </h1>
               <p className="mt-2 flex items-center gap-1.5 text-stone-100">
@@ -130,7 +130,7 @@ export default async function PropertyPage({
             <div>
               <Reveal>
                 <Eyebrow>{property.type}</Eyebrow>
-                <p className="mt-4 font-display text-3xl font-light text-ink">
+                <p className="mt-4 font-display text-3xl text-ink">
                   {property.priceLabel}
                 </p>
                 <p className="mt-5 max-w-2xl text-lg leading-relaxed text-body">

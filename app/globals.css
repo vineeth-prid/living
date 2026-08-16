@@ -72,6 +72,15 @@
   --text-display-hero: clamp(3.5rem, 8vw, 6.5rem);
   --text-display-xl: clamp(2.75rem, 6vw, 4.75rem);
   --text-display-lg: clamp(2.25rem, 4.5vw, 3.5rem);
+  /* One step below display-lg, for headings *inside* a section. Without it an
+     h3 was set at display-lg — the same size as the h2 above it — so the page
+     read as a pile of unrelated titles rather than a hierarchy. */
+  --text-display-md: clamp(1.75rem, 3vw, 2.375rem);
+
+  /* Cormorant is a high-contrast display serif: at weight 300 its thin strokes
+     disappear against warm cream. 400 is the floor for display copy here. The
+     brand permits 300-500; this stays inside it and is legible. */
+  --font-weight-display: 400;
 }
 
 :root {
@@ -107,8 +116,17 @@ body {
 
 /* Utilities layered on the token system */
 @layer utilities {
+  /* The display face carries its own weight, so a heading is `font-display`
+     and nothing else. Every heading used to repeat `font-light` by hand,
+     which is how thirty of them sat at a weight nobody had revisited.
+
+     Note this deliberately overrides the `.font-display` utility Tailwind
+     generates from `--font-display` above: `@layer utilities` is emitted after
+     the generated utilities, so this rule wins. Deleting it as a duplicate
+     would take the weight and the tracking with it. */
   .font-display {
     font-family: var(--font-display);
+    font-weight: var(--font-weight-display);
     letter-spacing: -0.015em;
   }
   .text-ink { color: var(--ink); }
@@ -121,6 +139,21 @@ body {
   .display-hero { font-size: var(--text-display-hero); line-height: 1.02; }
   .display-xl { font-size: var(--text-display-xl); line-height: 1.06; }
   .display-lg { font-size: var(--text-display-lg); line-height: 1.1; }
+  .display-md { font-size: var(--text-display-md); line-height: 1.18; }
+
+  /* The one interface size between sm and base. It was written as
+     `text-[15px]` in five places; naming it stops the sixth being 14 or 16. */
+  .text-ui { font-size: 0.9375rem; line-height: 1.5; }
+
+  /* Section rhythm, in one place. Every section had `py-16 md:py-24` copied
+     into it and picked its inner gaps separately, so the page breathed
+     unevenly. Whitespace is the brand, so this trims rather than strips. */
+  .section { padding-block: 3.5rem; }
+  .section-tight { padding-block: 2.75rem; }
+  @media (min-width: 768px) {
+    .section { padding-block: 5rem; }
+    .section-tight { padding-block: 3.5rem; }
+  }
 
   /* Tracked all-caps eyebrow — the only ALL-CAPS allowed */
   .eyebrow {

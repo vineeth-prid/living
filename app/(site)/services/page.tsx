@@ -125,11 +125,11 @@ export default async function ServicesPage() {
       />
 
       {/* PROPERTY BUYING */}
-      <section id="buying" className="scroll-mt-12 bg-page py-16 md:py-24">
+      <section id="buying" className="scroll-mt-12 bg-page section">
         <div className="shell">
           <Reveal className="max-w-2xl">
             <Eyebrow>Property buying</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <h2 className="mt-5 font-display text-ink display-lg">
               Homes worth coming back to.
             </h2>
             <p className="mt-6 text-lg leading-relaxed text-body">
@@ -145,12 +145,12 @@ export default async function ServicesPage() {
       </section>
 
       {/* SELL YOUR PROPERTY */}
-      <section id="selling" className="scroll-mt-12 bg-surface py-16 md:py-24">
+      <section id="selling" className="scroll-mt-12 bg-surface section">
         <div className="shell">
           <div className="grid gap-12 md:grid-cols-2 md:gap-12">
             <Reveal>
               <Eyebrow>Sell your property</Eyebrow>
-              <h2 className="mt-5 font-display font-light text-ink display-lg">
+              <h2 className="mt-5 font-display text-ink display-lg">
                 A sale handled with care, start to finish.
               </h2>
               <p className="mt-6 text-lg leading-relaxed text-body">
@@ -203,12 +203,12 @@ export default async function ServicesPage() {
       </section>
 
       {/* NRI SERVICES */}
-      <section id="nri" className="scroll-mt-12 bg-pine-50 py-16 md:py-24">
+      <section id="nri" className="scroll-mt-12 bg-pine-50 section">
         <div className="shell">
           <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-12">
             <Reveal>
               <Eyebrow>NRI services</Eyebrow>
-              <h2 className="mt-5 font-display font-light text-ink display-lg">
+              <h2 className="mt-5 font-display text-ink display-lg">
                 Your home in Kerala, in trusted hands.
               </h2>
               <p className="mt-6 text-lg leading-relaxed text-body">

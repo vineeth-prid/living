@@ -49,7 +49,7 @@ export function PropertyEnquiryForm({
         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-pine-50">
           <Check className="h-6 w-6 text-pine-600" strokeWidth={2} />
         </span>
-        <h3 className="mt-4 font-display text-2xl font-light text-ink">
+        <h3 className="mt-4 font-display text-2xl text-ink">
           Thank you — we&apos;ll be in touch.
         </h3>
         <p className="mt-3 text-sm leading-relaxed text-body">
@@ -70,7 +70,7 @@ export function PropertyEnquiryForm({
       action={formAction}
       className="rounded-hero border border-hairline bg-surface p-7 shadow-soft"
     >
-      <h2 className="font-display text-2xl font-light text-ink">
+      <h2 className="font-display text-2xl text-ink">
         Enquire about this property
       </h2>
       <p className="mt-1.5 text-sm text-muted">

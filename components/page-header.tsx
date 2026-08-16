@@ -24,7 +24,7 @@ export function PageHeader({
       <div className="shell">
         <Reveal className="max-w-3xl">
           <Eyebrow>{eyebrow}</Eyebrow>
-          <h1 className="mt-5 font-display font-light text-ink display-xl">
+          <h1 className="mt-5 font-display text-ink display-xl">
             {title}
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-body">

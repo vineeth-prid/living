@@ -71,13 +71,13 @@ export default function AboutPage() {
       />
 
       {/* MISSION / VISION */}
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page section">
         <div className="shell grid gap-8 md:grid-cols-2">
           <Reveal>
             <div className="h-full rounded-hero border border-hairline bg-surface p-10 shadow-soft md:p-12">
               <Compass className="h-8 w-8 text-pine-600" strokeWidth={1.4} />
               <p className="eyebrow mt-6">Our mission</p>
-              <h2 className="mt-4 font-display text-3xl font-light text-ink md:text-4xl">
+              <h2 className="mt-4 font-display text-3xl text-ink md:text-4xl">
                 To make the whole of home life feel effortless.
               </h2>
               <p className="mt-5 leading-relaxed text-body">
@@ -91,7 +91,7 @@ export default function AboutPage() {
             <div className="h-full rounded-hero border border-hairline bg-surface p-10 shadow-soft md:p-12">
               <Eye className="h-8 w-8 text-pine-600" strokeWidth={1.4} />
               <p className="eyebrow mt-6">Our vision</p>
-              <h2 className="mt-4 font-display text-3xl font-light text-ink md:text-4xl">
+              <h2 className="mt-4 font-display text-3xl text-ink md:text-4xl">
                 The most trusted name in living, in Kerala and beyond.
               </h2>
               <p className="mt-5 leading-relaxed text-body">
@@ -105,11 +105,11 @@ export default function AboutPage() {
       </section>
 
       {/* TIMELINE / LEGACY */}
-      <section className="overflow-hidden bg-surface py-16 md:py-24">
+      <section className="overflow-hidden bg-surface section">
         <div className="shell">
           <Reveal className="max-w-2xl">
             <Eyebrow>The legacy</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <h2 className="mt-5 font-display text-ink display-lg">
               A story fifteen years in the making.
             </h2>
           </Reveal>
@@ -146,11 +146,11 @@ export default function AboutPage() {
       </section>
 
       {/* VALUES */}
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page section">
         <div className="shell">
           <Reveal className="max-w-2xl">
             <Eyebrow>Our values</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <h2 className="mt-5 font-display text-ink display-lg">
               What we hold to, on every home.
             </h2>
           </Reveal>
@@ -171,11 +171,11 @@ export default function AboutPage() {
       </section>
 
       {/* LEADERSHIP */}
-      <section className="bg-surface py-16 md:py-24">
+      <section className="bg-surface section">
         <div className="shell">
           <Reveal className="max-w-2xl">
             <Eyebrow>Leadership</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <h2 className="mt-5 font-display text-ink display-lg">
               The people behind Living.
             </h2>
             <p className="mt-6 text-lg leading-relaxed text-body">
@@ -204,11 +204,11 @@ export default function AboutPage() {
       </section>
 
       {/* WHY LIVING + FUTURE VISION */}
-      <section className="bg-pine-50 py-16 md:py-24">
+      <section className="bg-pine-50 section">
         <div className="shell grid gap-12 md:grid-cols-2">
           <Reveal>
             <Eyebrow>Why Living</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <h2 className="mt-5 font-display text-ink display-lg">
               Because home deserves better than fragments.
             </h2>
             <p className="mt-6 leading-relaxed text-body">
@@ -220,7 +220,7 @@ export default function AboutPage() {
           </Reveal>
           <Reveal delay={0.1}>
             <Eyebrow>Future vision</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
+            <h2 className="mt-5 font-display text-ink display-lg">
               A single, intelligent home for living.
             </h2>
             <p className="mt-6 leading-relaxed text-body">

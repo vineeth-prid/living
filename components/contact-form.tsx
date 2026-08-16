@@ -43,7 +43,7 @@ export function ContactForm() {
             <span className="flex h-12 w-12 items-center justify-center rounded-full bg-pine-50">
               <Check className="h-6 w-6 text-pine-600" strokeWidth={2} />
             </span>
-            <h3 className="font-display text-3xl font-light text-ink">
+            <h3 className="font-display text-3xl text-ink">
               Thank you — that's on its way.
             </h3>
             <p className="max-w-sm leading-relaxed text-body">

@@ -40,13 +40,13 @@ export default function ContactPage() {
         imageAlt="A warm, light-filled reception space at the Living office in Kakkanad"
       />
 
-      <section className="bg-page py-16 md:py-24">
+      <section className="bg-page section">
         <div className="shell grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:gap-14">
           {/* Left — details */}
           <div>
             <Reveal>
               <Eyebrow>Talk to us</Eyebrow>
-              <h2 className="mt-5 font-display font-light text-ink display-lg">
+              <h2 className="mt-5 font-display text-ink display-lg">
                 We're a call away.
               </h2>
               <p className="mt-6 max-w-md text-lg leading-relaxed text-body">

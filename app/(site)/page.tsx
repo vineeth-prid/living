@@ -36,46 +36,46 @@ export default async function HomePage() {
       <Offerings />
 
       {/* Featured homes */}
-      <section id="homes" className="bg-page py-16 md:py-24">
+      <section id="homes" className="bg-page section">
         <div className="shell">
           <Reveal className="flex flex-wrap items-end justify-between gap-6">
             <div className="max-w-xl">
               <Eyebrow>Featured homes · Kochi & Ernakulam</Eyebrow>
-              <h2 className="mt-5 font-display font-light text-ink display-lg">
-                A few homes worth coming home to.
+              <h2 className="mt-5 font-display text-ink display-lg">
+                Homes we would live in ourselves.
               </h2>
             </div>
             <Link
               href="/services#buying"
-              className="inline-flex items-center gap-1.5 text-[15px] font-medium text-pine-700 hover:text-pine-800"
+              className="inline-flex items-center gap-1.5 text-ui font-medium text-pine-700 hover:text-pine-800"
             >
               View all homes
               <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
             </Link>
           </Reveal>
 
-          <div className="mt-14">
+          <div className="mt-10 md:mt-12">
             <Listings items={properties} />
           </div>
         </div>
       </section>
 
       {/* Platform teaser */}
-      <section className="bg-surface py-16 md:py-24">
+      <section className="bg-surface section">
         <div className="shell grid items-center gap-12 md:grid-cols-2 md:gap-14">
           <Reveal>
             <Eyebrow>The platform</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
-              A calm home to manage.
+            <h2 className="mt-5 font-display text-ink display-lg">
+              The part that starts after you move in.
             </h2>
-            <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
-              Beyond the sale, Living runs the everyday — one refined platform
-              for residents, vendors and associations. Facility management,
-              complaints, home services and community, all in their place.
+            <p className="mt-5 max-w-md text-lg leading-relaxed text-body">
+              Raise a complaint, book a plumber, pay maintenance, see where the
+              money went. One app for residents, vendors and the association —
+              so running a building stops being somebody&rsquo;s evening job.
             </p>
             <Link
               href="/platform"
-              className="mt-8 inline-flex items-center gap-1.5 text-[15px] font-medium text-pine-700 hover:text-pine-800"
+              className="mt-8 inline-flex items-center gap-1.5 text-ui font-medium text-pine-700 hover:text-pine-800"
             >
               Explore the platform
               <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
@@ -84,10 +84,10 @@ export default async function HomePage() {
           <Reveal delay={0.1}>
             <div className="grid grid-cols-2 gap-4">
               {[
-                ["94.2%", "Complaints resolved on time"],
-                ["15 yrs", "Of ITR Group trust"],
-                ["24/7", "Concierge for residents"],
-                ["1 app", "For the whole community"],
+                ["94.2%", "Complaints closed within the promised window"],
+                ["15 yrs", "Building and handing over in Kerala"],
+                ["18", "NRI services, from documentation to a leaking tap"],
+                ["1", "App for residents, vendors and the association"],
               ].map(([k, v]) => (
                 <div
                   key={v}

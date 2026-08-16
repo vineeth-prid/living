@@ -69,7 +69,7 @@ export function Hero() {
             Living · by ITR Group
           </motion.p>
 
-          <h1 className="mt-5 font-display font-light text-stone-50 display-hero">
+          <h1 className="mt-5 font-display text-stone-50 display-hero">
             <span className="sr-only">Life happens here.</span>
             <span aria-hidden className="flex flex-wrap gap-x-[0.28em]">
               {words.map((w, i) => (
@@ -103,8 +103,9 @@ export function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, ease: EASE, delay: 1.7 }}
           >
-            A premium way to find a home, sell one, and manage the life inside
-            it — considered, warm, and effortless, across Kochi and Kerala.
+            Buy a home in Kochi, sell the one you have, or hand us the running
+            of it while you are away. Fifteen years of ITR Group, in one calm
+            place.
           </motion.p>
 
           <motion.div

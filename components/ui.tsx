@@ -54,7 +54,7 @@ export function Button({
   external,
 }: BtnProps) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-[12px] px-6 py-3 text-[15px] font-medium transition-all duration-200 ease-[var(--ease-calm)] min-h-[44px] active:scale-[0.98]";
+    "inline-flex items-center justify-center gap-2 rounded-[12px] px-6 py-3 text-ui font-medium transition-all duration-200 ease-[var(--ease-calm)] min-h-[44px] active:scale-[0.98]";
   const styles = {
     primary:
       "bg-pine-600 text-stone-50 hover:bg-pine-700 hover:-translate-y-0.5 shadow-soft hover:shadow-lift",
@@ -121,7 +121,7 @@ export function Section({
     ink: "bg-stone-950 text-stone-100",
   }[tone ?? "page"];
   return (
-    <section id={id} className={`py-16 md:py-24 ${bg} ${className ?? ""}`}>
+    <section id={id} className={`section ${bg} ${className ?? ""}`}>
       <div className="shell">{children}</div>
     </section>
   );
