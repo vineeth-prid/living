@@ -22,10 +22,11 @@ export function SiteNav() {
 
   useEffect(() => setOpen(false), [pathname]);
 
-  // Over the dark home hero (top, not scrolled) the bar is transparent and
-  // its contents are ivory; everywhere else contents are ink.
-  const isHome = pathname === "/";
-  const light = isHome && !scrolled && !open;
+  // Over a dark hero (top, not scrolled) the bar is transparent and its
+  // contents are ivory; everywhere else contents are ink. Once scrolled the
+  // bar gains its own light background, so ink is legible over any section.
+  const darkHero = pathname === "/" || pathname === "/platform";
+  const light = darkHero && !scrolled && !open;
 
   return (
     <header

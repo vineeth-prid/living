@@ -138,3 +138,49 @@ export function VendorScreen() {
     </div>
   );
 }
+
+// Committee screen — the third device in the showcase row.
+export function CommitteeScreen() {
+  return (
+    <div className="flex h-full flex-col gap-3 px-4 pb-4 pt-10">
+      <div className="pt-2">
+        <p className="eyebrow">Palm Meadows</p>
+        <p className="font-display text-2xl leading-tight text-ink">
+          This month<span className="text-clay-500">.</span>
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        {([
+          { label: "Collected", value: "94.2%", accent: true },
+          { label: "Open issues", value: "7" },
+          { label: "Avg close", value: "1.8d" },
+          { label: "Vendors", value: "12" },
+        ] as const).map((k) => (
+          <div
+            key={k.label}
+            className="rounded-[14px] border border-hairline bg-surface p-3"
+          >
+            <span className="block text-[11px] text-muted">{k.label}</span>
+            <span
+              className={`mono mt-0.5 block text-xl ${
+                "accent" in k && k.accent ? "text-pine-600" : "text-ink"
+              }`}
+            >
+              {k.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted">
+        Awaiting approval
+      </p>
+      <div className="flex flex-col gap-2.5">
+        <Row icon={Wrench} title="Lift AMC renewal" meta="₹48,000 · Tower A" accent />
+        <Row icon={ShoppingBag} title="Garden supplies" meta="₹6,400 · monthly" />
+        <Row icon={CalendarCheck} title="Generator service" meta="Due next week" />
+      </div>
+    </div>
+  );
+}

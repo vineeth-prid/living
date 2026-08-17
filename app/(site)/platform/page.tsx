@@ -7,26 +7,31 @@ import {
   ShoppingBag,
   BarChart3,
   FileText,
-  Bot,
   ShieldCheck,
   Users2,
+  Smartphone,
   Wallet,
-  AlertTriangle,
-  Layers,
-  Gauge,
+  Check,
+  X,
+  ArrowRight,
+  Zap,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
-import { CtaBand } from "@/components/cta";
 import { Reveal, Stagger, StaggerItem } from "@/components/motion";
-import { Eyebrow, Button } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { JsonLd, breadcrumb, faqSchema } from "@/components/schema";
 import {
   Phone,
   Float,
   ResidentScreen,
   VendorScreen,
+  CommitteeScreen,
 } from "@/components/platform/devices";
-import { CustomerJourney, AdminDashboard } from "@/components/platform/showcase";
+import { AdminDashboard } from "@/components/platform/showcase";
+import { SectionNav } from "@/components/platform/section-nav";
+import { Faq } from "@/components/platform/accordion";
+import { Marquee } from "@/components/platform/marquee";
+import { HeroTexture } from "@/components/platform/hero-bg";
+import { Countdown } from "@/components/platform/countdown";
 import { waLink, site } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -36,21 +41,136 @@ export const metadata: Metadata = {
   alternates: { canonical: "/platform" },
 };
 
-const challenges = [
+const shell = "mx-auto w-full max-w-[1080px] px-5";
+const band = "py-[56px] md:py-[120px]";
+
+const sections = [
+  { id: "compare", label: "Why Living" },
+  { id: "how", label: "How it works" },
+  { id: "benefits", label: "What you get" },
+  { id: "demo", label: "Demo" },
+  { id: "faq", label: "FAQ" },
+] as const;
+
+const oldWay = [
+  "Ten places — WhatsApp, spreadsheets, notebooks",
+  "Complaints forgotten by Friday",
+  "Dues and expenses nobody can see",
+  "Evenings lost to reconciling",
+];
+
+const newWay = [
+  "One app, one thread, one record",
+  "Every complaint tracked through to closed",
+  "Collections and spend on a single screen",
+  "Board-ready reports in a tap",
+];
+
+// Figures already published elsewhere on the site — no invented claims.
+const stats = [
+  ["94.2%", "Complaints closed on time"],
+  ["8", "Modules, included"],
+  ["15 yrs", "Of ITR Group behind it"],
+] as const;
+
+const steps = [
   {
-    icon: Layers,
-    title: "Everything lives in ten places.",
-    body: "WhatsApp groups, spreadsheets, notebooks and phone calls. Nothing is in one place, and nothing is ever quite settled.",
+    n: "01",
+    title: "Onboard your community",
+    body: "Units, residents, committee and vendors, imported in one go. No code, no long migration — most communities are live inside a week.",
+    visual: (
+      <div className="flex flex-col gap-2">
+        {[
+          ["Units imported", "248"],
+          ["Residents invited", "412"],
+          ["Vendors linked", "12"],
+        ].map(([label, value]) => (
+          <div
+            key={label}
+            className="flex items-center justify-between rounded-[14px] border border-hairline bg-surface px-4 py-3"
+          >
+            <span className="flex items-center gap-2.5 text-[13px] text-ink">
+              <Check className="h-4 w-4 text-pine-600" strokeWidth={2} />
+              {label}
+            </span>
+            <span className="mono text-[13px] text-muted">{value}</span>
+          </div>
+        ))}
+      </div>
+    ),
   },
   {
-    icon: AlertTriangle,
-    title: "Complaints disappear.",
-    body: "A leak reported on Monday is forgotten by Friday. Residents chase; managers guess; trust quietly erodes.",
+    n: "02",
+    title: "Everyone works in one place",
+    body: "Residents raise and pay, vendors see their day, the committee approves — each in a view built for the job, all writing to the same record.",
+    visual: (
+      <div className="flex flex-col gap-2">
+        {[
+          ["Water leakage · 1204", "Assigned", "bg-[#e7eff3] text-[#325870]"],
+          ["Lift noise · Tower A", "In progress", "bg-[#f8f0d9] text-[#9e7817]"],
+          ["Garden lighting · Villa 12", "Resolved", "bg-[#e9f2ec] text-[#2f6347]"],
+        ].map(([title, status, tone]) => (
+          <div
+            key={title}
+            className="flex items-center justify-between gap-3 rounded-[14px] border border-hairline bg-surface px-4 py-3"
+          >
+            <span className="truncate text-[13px] text-ink">{title}</span>
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium ${tone}`}
+            >
+              {status}
+            </span>
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    n: "03",
+    title: "See exactly where it stands",
+    body: "Collections, resolution times and spend update as they happen. The committee runs the community in minutes a day, and the AGM writes itself.",
+    visual: (
+      <div className="rounded-[14px] border border-hairline bg-surface p-4">
+        <div className="flex items-baseline justify-between">
+          <span className="text-[13px] text-ink">Complaints resolved</span>
+          <span className="mono text-[11px] text-muted">6 months</span>
+        </div>
+        <div className="mt-4 flex h-24 items-end gap-1.5">
+          {[58, 71, 66, 82, 76, 94].map((h, i) => (
+            <div
+              key={i}
+              className={`flex-1 rounded-t-[4px] ${
+                i === 5 ? "bg-clay-500" : "bg-pine-400"
+              }`}
+              style={{ height: `${h}%` }}
+            />
+          ))}
+        </div>
+      </div>
+    ),
+  },
+];
+
+const benefits = [
+  {
+    icon: Smartphone,
+    title: "One app for the whole community",
+    body: "Residents, vendors and the committee, finally in the same place.",
+  },
+  {
+    icon: MessageSquareWarning,
+    title: "Nothing slips through",
+    body: "Every complaint has a status everybody can see, right through to closed.",
   },
   {
     icon: Wallet,
-    title: "Money is a mystery.",
-    body: "Dues, expenses and budgets are opaque. Associations spend evenings reconciling instead of living.",
+    title: "The money is on one screen",
+    body: "Dues, expenses and budgets update as they happen — no month-end scramble.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Private by default",
+    body: "Role-based access, encrypted data, and a full audit trail on every approval.",
   },
 ];
 
@@ -97,21 +217,26 @@ const features = [
   },
 ];
 
-const security = [
-  "Role-based access for residents, vendors and committees",
-  "Encrypted data, in transit and at rest",
-  "Full audit trail on every action and approval",
-  "Private by default — your community's data is yours",
-];
-
 const faqs = [
   {
+    q: "Who is Living for?",
+    a: "Apartment and villa communities in Kochi and Kerala — the residents who live there, the vendors who serve them, and the association committee that answers for it all.",
+  },
+  {
     q: "What does the Living platform do?",
-    a: "Living is a community and facility management platform for apartments and villa communities in Kochi and Kerala. It includes a resident app, vendor app, and association dashboard covering facility management, complaints, preventive maintenance, home services, a marketplace, analytics and reports.",
+    a: "Living is a community and facility management platform. It includes a resident app, vendor app, and association dashboard covering facility management, complaints, preventive maintenance, home services, a marketplace, analytics and reports.",
   },
   {
     q: "Is there a resident mobile app?",
     a: "Yes. Residents get a mobile app to pay dues, raise and track complaints, book home services, manage visitors and amenities, and access the community marketplace.",
+  },
+  {
+    q: "What does the association get?",
+    a: "The committee gets a dashboard covering collections, complaints, facilities and finance, with board-ready financial and operational reports generated in a tap, and a full audit trail on every action and approval.",
+  },
+  {
+    q: "Is our data safe?",
+    a: "Role-based access separates residents, vendors and committee members, data is encrypted in transit and at rest, every action and approval leaves an audit trail, and the community's data stays private by default.",
   },
   {
     q: "How do I see the platform?",
@@ -130,31 +255,197 @@ export default function PlatformPage() {
       />
       <JsonLd data={faqSchema(faqs)} />
 
-      <PageHeader
-        eyebrow="The platform"
-        title="A calm home to manage."
-        intro="One refined platform for residents, vendors and associations — so a community runs itself quietly in the background, and everyone just lives."
-        visual={<CustomerJourney />}
-      />
+      {/* ================= HERO — dark, centred, texture behind ============== */}
+      <header className="relative overflow-hidden bg-pine-950 pb-[72px] pt-32 md:pb-[104px] md:pt-44">
+        <HeroTexture />
 
-      {/* CHALLENGES */}
-      <section className="bg-page py-16 md:py-24">
-        <div className="shell">
-          <Reveal className="max-w-2xl">
-            <Eyebrow>The challenge</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
-              Managing a community shouldn't feel like a second job.
+        <div className={`${shell} relative text-center`}>
+          <Reveal>
+            <span className="inline-flex items-center gap-2 rounded-full border border-stone-50/15 bg-stone-50/[0.14] px-4 py-2 text-xs font-semibold text-stone-50 backdrop-blur-[33px]">
+              <Zap className="h-3.5 w-3.5 text-clay-300" strokeWidth={2} />
+              Now onboarding communities across Kochi
+            </span>
+          </Reveal>
+
+          <Reveal delay={0.08}>
+            <h1 className="mx-auto mt-8 max-w-3xl font-display font-light text-stone-50">
+              <span className="block text-[clamp(2rem,4.6vw,3.75rem)] leading-[1.06] tracking-[-0.02em]">
+                Run your whole community with
+              </span>
+              <span className="mt-2 block text-[clamp(3.5rem,12vw,8rem)] leading-[0.8] tracking-[-0.03em]">
+                <span className="text-clay-400">one</span> app
+              </span>
+            </h1>
+          </Reveal>
+
+          <Reveal delay={0.16}>
+            <p className="mx-auto mt-8 max-w-xl text-[15px] leading-relaxed text-stone-300">
+              Living brings dues, complaints, vendors, facilities and finance
+              into a single platform — so a community runs itself quietly in the
+              background, and everyone just lives.
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.24}>
+            <div className="mt-9 flex justify-center">
+              <Button
+                href={waLink(
+                  "Hello Living, we'd like to request a platform demo for our community.",
+                )}
+                variant="accent"
+                external
+              >
+                Request a demo
+              </Button>
+            </div>
+          </Reveal>
+
+          {/* Social-proof row — icon cluster in place of the template's avatars */}
+          <Reveal delay={0.32}>
+            <div className="mt-8 flex items-center justify-center gap-3">
+              <div className="flex -space-x-2.5">
+                {[Smartphone, Users2, Building2].map((Icon, i) => (
+                  <span
+                    key={i}
+                    className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-pine-950 bg-pine-800 text-clay-300"
+                  >
+                    <Icon className="h-4 w-4" strokeWidth={1.6} />
+                  </span>
+                ))}
+              </div>
+              <p className="text-left text-[13px] leading-tight text-stone-400">
+                <span className="mono text-stone-50">94.2%</span> of complaints
+                <br className="sm:hidden" /> closed within the promised window
+              </p>
+            </div>
+          </Reveal>
+        </div>
+
+        {/* ---- Showcase: three devices, then the wordmark marquee ---------- */}
+        <div className={`${shell} relative mt-16 md:mt-24`}>
+          <Reveal className="mx-auto max-w-2xl text-center">
+            <p className="text-[15px] leading-relaxed text-stone-400">
+              Living handles the everyday of a community — from a leaking tap to
+              the annual audit — so the committee stops chasing and the residents
+              stop wondering.
+            </p>
+          </Reveal>
+
+          <div className="mt-12 flex items-end justify-center gap-4 md:mt-16 md:gap-8">
+            {/* Outer two step back on desktop, as in the template's trio. */}
+            <Reveal delay={0.08} className="hidden w-1/3 md:block">
+              <Float>
+                <div className="origin-bottom scale-[0.88] opacity-90">
+                  <Phone>
+                    <VendorScreen />
+                  </Phone>
+                </div>
+              </Float>
+            </Reveal>
+            <Reveal className="w-full max-w-[280px] md:w-1/3">
+              <Float delay={0.6}>
+                <Phone>
+                  <ResidentScreen />
+                </Phone>
+              </Float>
+            </Reveal>
+            <Reveal delay={0.16} className="hidden w-1/3 md:block">
+              <Float delay={1.2}>
+                <div className="origin-bottom scale-[0.88] opacity-90">
+                  <Phone>
+                    <CommitteeScreen />
+                  </Phone>
+                </div>
+              </Float>
+            </Reveal>
+          </div>
+        </div>
+
+        <Marquee text="LIVING" className="mt-14 md:mt-20" />
+      </header>
+
+      {/* Rendered as a direct sibling, not inside a wrapper: a sticky element
+          only travels within its parent's box, and these sections are the
+          scroll region it has to follow. */}
+      <SectionNav items={sections} />
+
+      {/* ================= COMPARISON ======================================= */}
+      <section id="compare" className={`bg-page ${band}`}>
+        <div className={shell}>
+          <Reveal className="text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-clay-700">
+              Trusted by communities in Kochi
+            </p>
+            <h2 className="mx-auto mt-5 max-w-2xl font-display font-light text-ink text-[clamp(2rem,3.6vw,3.2rem)] leading-[1.08] tracking-[-0.02em]">
+              The old way, and the way it should be.
             </h2>
           </Reveal>
-          <Stagger className="mt-14 grid gap-6 md:grid-cols-3">
-            {challenges.map((c) => (
-              <StaggerItem key={c.title}>
-                <div className="h-full rounded-card border border-hairline bg-surface p-8 shadow-soft">
-                  <c.icon className="h-7 w-7 text-clay-500" strokeWidth={1.5} />
-                  <h3 className="mt-5 font-display text-2xl text-ink">
-                    {c.title}
-                  </h3>
-                  <p className="mt-3 leading-relaxed text-muted">{c.body}</p>
+
+          <div className="mt-14 grid gap-5 md:grid-cols-2">
+            {/* The old way */}
+            <Reveal>
+              <div className="flex h-full flex-col rounded-[24px] border border-hairline bg-surface p-7 md:p-8">
+                <span className="inline-flex w-max items-center gap-2 rounded-full bg-stone-100 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-600">
+                  <X className="h-3.5 w-3.5" strokeWidth={2.4} />
+                  The old way
+                </span>
+                <ul className="mt-7 flex flex-col gap-4">
+                  {oldWay.map((t) => (
+                    <li key={t} className="flex items-start gap-3">
+                      <X
+                        className="mt-0.5 h-4 w-4 shrink-0 text-stone-400"
+                        strokeWidth={2.2}
+                      />
+                      <span className="text-[15px] leading-relaxed text-muted">
+                        {t}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-8 rounded-[16px] bg-stone-100 px-5 py-4 text-center text-[13px] font-medium text-stone-600">
+                  Somebody&rsquo;s second job, every single week
+                </div>
+              </div>
+            </Reveal>
+
+            {/* With Living */}
+            <Reveal delay={0.1}>
+              <div className="flex h-full flex-col rounded-[24px] border border-pine-200 bg-gradient-to-b from-pine-50 to-surface p-7 shadow-lift md:p-8">
+                <span className="inline-flex w-max items-center gap-2 rounded-full bg-pine-700 px-3.5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-stone-50">
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
+                  With Living
+                </span>
+                <ul className="mt-7 flex flex-col gap-4">
+                  {newWay.map((t) => (
+                    <li key={t} className="flex items-start gap-3">
+                      <Check
+                        className="mt-0.5 h-4 w-4 shrink-0 text-pine-600"
+                        strokeWidth={2.2}
+                      />
+                      <span className="text-[15px] leading-relaxed text-body">
+                        {t}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-8 rounded-[16px] bg-pine-700 px-5 py-4 text-center text-[13px] font-medium text-stone-50">
+                  Minutes a day, and the AGM writes itself
+                </div>
+              </div>
+            </Reveal>
+          </div>
+
+          {/* Stat trio */}
+          <Stagger className="mt-5 grid gap-5 sm:grid-cols-3">
+            {stats.map(([figure, label]) => (
+              <StaggerItem key={label}>
+                <div className="rounded-[24px] border border-hairline bg-surface px-6 py-8 text-center">
+                  <div className="font-display text-[clamp(2.25rem,4vw,3rem)] leading-none text-pine-700">
+                    {figure}
+                  </div>
+                  <p className="mt-3 text-[13px] leading-relaxed text-muted">
+                    {label}
+                  </p>
                 </div>
               </StaggerItem>
             ))}
@@ -162,101 +453,100 @@ export default function PlatformPage() {
         </div>
       </section>
 
-      {/* HOW LIVING SOLVES IT — Resident app */}
-      <section className="overflow-hidden bg-surface py-16 md:py-24">
-        <div className="shell grid items-center gap-12 md:grid-cols-2">
+      {/* ================= WIDE DASHBOARD =================================== */}
+      <section className="bg-page pb-[56px] md:pb-[120px]">
+        <div className={shell}>
           <Reveal>
-            <Eyebrow>How Living solves it · Resident app</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
-              Everything in its place, in your pocket.
-            </h2>
-            <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
-              Dues, complaints, visitors, amenities and home services — one
-              elegant app residents actually want to open. Calm, quick, and
-              unmistakably premium.
-            </p>
-            <ul className="mt-7 space-y-2.5 text-body">
-              {["Pay maintenance in seconds", "Track every complaint to resolution", "Book trusted home services", "Manage visitors and amenities"].map(
-                (li) => (
-                  <li key={li} className="flex items-center gap-2.5">
-                    <Gauge className="h-4 w-4 text-pine-500" strokeWidth={1.75} />
-                    {li}
-                  </li>
-                ),
-              )}
-            </ul>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <Float>
-              <Phone>
-                <ResidentScreen />
-              </Phone>
-            </Float>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* Vendor app */}
-      <section className="overflow-hidden bg-page py-16 md:py-24">
-        <div className="shell grid items-center gap-12 md:grid-cols-2">
-          <Reveal delay={0.1} className="md:order-2">
-            <Eyebrow>Vendor app</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
-              Work that flows, not fights.
-            </h2>
-            <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
-              Vendors see their day at a glance — jobs, routes, and preventive
-              schedules — and residents see honest, real-time updates. Good work,
-              clearly done.
-            </p>
-          </Reveal>
-          <Reveal className="md:order-1">
-            <Float delay={1}>
-              <Phone>
-                <VendorScreen />
-              </Phone>
-            </Float>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* ASSOCIATION / ADMIN DASHBOARD */}
-      <section className="bg-surface py-16 md:py-24">
-        <div className="shell">
-          <Reveal className="max-w-2xl">
-            <Eyebrow>Association dashboard</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
-              The whole community, on one screen.
-            </h2>
-            <p className="mt-6 text-lg leading-relaxed text-body">
-              Collections, complaints, facilities and finance — the committee's
-              command centre, clear enough to run the community in minutes a day.
-            </p>
-          </Reveal>
-          <Reveal delay={0.1} className="mt-12">
             <AdminDashboard />
           </Reveal>
         </div>
       </section>
 
-      {/* CAPABILITIES GRID */}
-      <section className="bg-page py-16 md:py-24">
-        <div className="shell">
-          <Reveal className="max-w-2xl">
-            <Eyebrow>One platform, everything covered</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
-              The whole community, considered.
+      {/* ================= HOW IT WORKS ===================================== */}
+      <section id="how" className={`bg-surface ${band}`}>
+        <div className={shell}>
+          <Reveal className="text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-clay-700">
+              How it works
+            </p>
+            <h2 className="mx-auto mt-5 max-w-2xl font-display font-light text-ink text-[clamp(2rem,3.6vw,3.2rem)] leading-[1.08] tracking-[-0.02em]">
+              Get started in 3 simple steps.
             </h2>
           </Reveal>
-          <Stagger className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+
+          <Stagger className="mt-14 grid gap-5 md:grid-cols-3">
+            {steps.map((s) => (
+              <StaggerItem key={s.n}>
+                <div className="flex h-full flex-col rounded-[24px] border border-hairline bg-page p-6">
+                  <div className="rounded-[18px] bg-stone-100/70 p-4">
+                    {s.visual}
+                  </div>
+                  <span className="mono mt-7 text-[13px] text-clay-600">
+                    {s.n}
+                  </span>
+                  <h3 className="mt-2 font-display text-2xl text-ink">
+                    {s.title}
+                  </h3>
+                  <p className="mt-2.5 text-[15px] leading-relaxed text-muted">
+                    {s.body}
+                  </p>
+                </div>
+              </StaggerItem>
+            ))}
+          </Stagger>
+        </div>
+      </section>
+
+      {/* ================= BENEFITS (bento) ================================= */}
+      <section id="benefits" className={`bg-page ${band}`}>
+        <div className={shell}>
+          <Reveal className="text-center">
+            <h2 className="mx-auto max-w-2xl font-display font-light text-ink text-[clamp(2rem,3.6vw,3.2rem)] leading-[1.08] tracking-[-0.02em]">
+              Why communities move to Living.
+            </h2>
+          </Reveal>
+
+          {/* Template bento: first tile spans two columns, then three across. */}
+          <Stagger className="mt-14 grid gap-5 md:grid-cols-2">
+            {benefits.map((b, i) => (
+              <StaggerItem key={b.title} className={i === 0 ? "md:col-span-2" : ""}>
+                <div
+                  className={`group relative h-full overflow-hidden rounded-[24px] border border-hairline bg-surface p-7 transition-all duration-500 ease-[var(--ease-calm)] hover:-translate-y-1 hover:border-pine-200 hover:shadow-lift ${
+                    i === 0 ? "md:p-9" : ""
+                  }`}
+                >
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-pine-100/50 blur-3xl transition-opacity duration-500 group-hover:opacity-70"
+                  />
+                  <span className="relative flex h-11 w-11 items-center justify-center rounded-full bg-pine-50 text-pine-700 transition-colors duration-500 group-hover:bg-pine-100">
+                    <b.icon className="h-5 w-5" strokeWidth={1.6} />
+                  </span>
+                  <h3
+                    className={`relative mt-6 font-display text-ink ${
+                      i === 0 ? "text-3xl" : "text-2xl"
+                    }`}
+                  >
+                    {b.title}
+                  </h3>
+                  <p className="relative mt-2.5 max-w-md text-[15px] leading-relaxed text-muted">
+                    {b.body}
+                  </p>
+                </div>
+              </StaggerItem>
+            ))}
+          </Stagger>
+
+          {/* The eight modules, as the template's dense secondary grid. */}
+          <Stagger className="mt-5 grid gap-px overflow-hidden rounded-[24px] border border-hairline bg-hairline sm:grid-cols-2 lg:grid-cols-4">
             {features.map((f) => (
               <StaggerItem key={f.title}>
-                <div className="flex h-full flex-col rounded-card border border-hairline bg-surface p-7 shadow-soft transition-shadow duration-300 hover:shadow-lift">
-                  <f.icon className="h-6 w-6 text-pine-600" strokeWidth={1.5} />
-                  <h3 className="mt-5 font-display text-xl text-ink">
+                <div className="h-full bg-surface p-6 transition-colors duration-500 hover:bg-pine-50/40">
+                  <f.icon className="h-5 w-5 text-pine-700" strokeWidth={1.5} />
+                  <h3 className="mt-4 font-display text-lg text-ink">
                     {f.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-muted">
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-muted">
                     {f.body}
                   </p>
                 </div>
@@ -266,98 +556,27 @@ export default function PlatformPage() {
         </div>
       </section>
 
-      {/* FUTURE AI ASSISTANT */}
-      <section className="bg-pine-50 py-16 md:py-24">
-        <div className="shell grid items-center gap-12 md:grid-cols-[1fr_1.1fr]">
-          <Reveal>
-            <span className="inline-flex items-center gap-2 rounded-full border border-pine-200 bg-surface px-4 py-1.5 text-xs font-medium text-clay-700">
-              <Bot className="h-4 w-4" strokeWidth={1.6} /> Coming to Living
-            </span>
-            <h2 className="mt-6 font-display font-light text-ink display-lg">
-              An assistant that knows your community.
-            </h2>
-            <p className="mt-6 max-w-lg text-lg leading-relaxed text-body">
-              Ask a question, raise a request, or understand a bill — in plain
-              language. The Living AI assistant will handle the everyday, so the
-              committee and residents can simply live.
-            </p>
+      {/* ================= COUNTDOWN CTA (dark) ============================= */}
+      <section id="demo" className={`relative overflow-hidden bg-pine-950 ${band}`}>
+        <HeroTexture />
+        <div className={`${shell} relative`}>
+          <Reveal className="flex flex-col items-center">
+            <Countdown label="Onboarding for this quarter closes in" />
           </Reveal>
-          <Reveal delay={0.1}>
-            <div className="rounded-hero border border-hairline bg-surface p-6 shadow-float">
-              {[
-                ["You", "When is the next lift service?"],
-                ["Living AI", "The lift in Tower B is scheduled for preventive service on Friday, 10:00 am. I've added a reminder for you."],
-                ["You", "Pay my dues"],
-                ["Living AI", "₹4,200 is due in 3 days. Shall I pay it now from your saved method?"],
-              ].map(([who, msg], i) => (
-                <div
-                  key={i}
-                  className={`mb-3 max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                    who === "You"
-                      ? "ml-auto bg-pine-600 text-stone-50"
-                      : "bg-stone-100 text-body"
-                  }`}
-                >
-                  <span className="mb-1 block text-[10px] uppercase tracking-wider opacity-60">
-                    {who}
-                  </span>
-                  {msg}
-                </div>
-              ))}
-            </div>
-          </Reveal>
-        </div>
-      </section>
 
-      {/* SECURITY */}
-      <section className="bg-page py-16 md:py-24">
-        <div className="shell grid gap-12 md:grid-cols-2 md:gap-12">
-          <Reveal>
-            <Eyebrow>Security & trust</Eyebrow>
-            <h2 className="mt-5 font-display font-light text-ink display-lg">
-              Built to be trusted with home.
+          <Reveal delay={0.1} className="mt-16 text-center">
+            <h2 className="mx-auto max-w-2xl font-display font-light text-stone-50 text-[clamp(2rem,4vw,3.5rem)] leading-[1.06] tracking-[-0.02em]">
+              Ready to see Living?
             </h2>
-            <p className="mt-6 max-w-md text-lg leading-relaxed text-body">
-              A community's data is deeply personal. Living treats it that way —
-              private by default, secure by design.
-            </p>
-          </Reveal>
-          <Reveal delay={0.1}>
-            <ul className="space-y-4">
-              {security.map((s) => (
-                <li
-                  key={s}
-                  className="flex items-start gap-3 rounded-card border border-hairline bg-surface p-5 shadow-soft"
-                >
-                  <ShieldCheck
-                    className="mt-0.5 h-5 w-5 shrink-0 text-pine-600"
-                    strokeWidth={1.6}
-                  />
-                  <span className="text-body">{s}</span>
-                </li>
-              ))}
-            </ul>
-          </Reveal>
-        </div>
-      </section>
-
-      {/* REQUEST DEMO / BOOK CONSULTATION */}
-      <section className="bg-pine-700">
-        <div className="shell py-24 text-center md:py-32">
-          <Reveal className="mx-auto max-w-2xl">
-            <Eyebrow>
-              <span className="text-clay-300">See it for yourself</span>
-            </Eyebrow>
-            <h2 className="mt-5 font-display font-light text-stone-50 display-xl">
-              A quiet demo, whenever suits you.
-            </h2>
-            <p className="mt-6 text-lg leading-relaxed text-stone-200">
-              We'll walk your committee through Living, tailored to your
+            <p className="mx-auto mt-5 max-w-lg text-[15px] leading-relaxed text-stone-300">
+              We&rsquo;ll walk your committee through it, tailored to your
               community — no pressure, no jargon.
             </p>
-            <div className="mt-9 flex flex-wrap justify-center gap-4">
+            <div className="mt-8 flex flex-wrap justify-center gap-3">
               <Button
-                href={waLink("Hello Living, we'd like to request a platform demo for our community.")}
+                href={waLink(
+                  "Hello Living, we'd like to request a platform demo for our community.",
+                )}
                 variant="accent"
                 external
               >
@@ -370,6 +589,62 @@ export default function PlatformPage() {
               >
                 Book a consultation
               </Button>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ================= FAQ ============================================== */}
+      <section id="faq" className={`bg-page ${band}`}>
+        <div className="mx-auto w-full max-w-[760px] px-5">
+          <Reveal className="text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-clay-700">
+              FAQ
+            </p>
+            <h2 className="mt-5 font-display font-light text-ink text-[clamp(2rem,3.6vw,3.2rem)] leading-[1.08] tracking-[-0.02em]">
+              Common questions.
+            </h2>
+          </Reveal>
+          <Reveal delay={0.1} className="mt-12">
+            <Faq items={faqs} />
+          </Reveal>
+          <Reveal delay={0.16} className="mt-8 text-center">
+            <a
+              href="/contact"
+              className="inline-flex items-center gap-2 text-[15px] text-pine-700 underline-offset-4 hover:underline"
+            >
+              Still have a question? Talk to us
+              <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
+            </a>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ================= CLOSING BAND ===================================== */}
+      <section className="bg-page pb-[56px] md:pb-[120px]">
+        <div className={shell}>
+          <Reveal>
+            <div className="relative overflow-hidden rounded-[40px] bg-pine-700 px-7 py-14 text-center md:px-12 md:py-20">
+              <Marquee
+                text="LIVING"
+                className="absolute inset-x-0 bottom-0 opacity-60"
+              />
+              <div className="relative">
+                <h2 className="mx-auto max-w-xl font-display font-light text-stone-50 text-[clamp(1.75rem,3.4vw,3rem)] leading-[1.08] tracking-[-0.02em]">
+                  Don&rsquo;t wait for the next AGM — see Living this week.
+                </h2>
+                <div className="mt-8 flex justify-center">
+                  <Button
+                    href={waLink(
+                      "Hello Living, we'd like to request a platform demo for our community.",
+                    )}
+                    variant="accent"
+                    external
+                  >
+                    Request a demo
+                  </Button>
+                </div>
+              </div>
             </div>
           </Reveal>
         </div>

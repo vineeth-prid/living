@@ -14,7 +14,8 @@
     "check:jsonld": "tsx scripts/check-jsonld.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "check:security": "tsx scripts/check-security.ts",
-    "check:property": "tsx scripts/check-property.ts"
+    "check:property": "tsx scripts/check-property.ts",
+    "check:quarter": "tsx scripts/check-quarter-end.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
