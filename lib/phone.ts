@@ -36,9 +36,22 @@ export function normalisePhone(
   input: string | null | undefined,
 ): NormalisedPhone | null {
   if (!input) return null;
-  // Group addresses are not people; treating one as a contact would attach a
-  // record to nobody.
-  if (input.includes("@g.us") || input.includes("@broadcast")) return null;
+  // Addresses that are not phone numbers. A "@lid" is WhatsApp's privacy-masked
+  // sender id — the digits in front of it look like an E.164 number and are
+  // not one, so without this guard a masked sender is silently stored as a
+  // fabricated number that matches no employee and cannot be replied to.
+  // Resolving a lid to its real number needs the gateway: see
+  // lib/integrations/whatsapp/openwa/lid.ts.
+  // Lowercased first: gateways are not consistent about the case of these
+  // suffixes, and a case-sensitive check is a guard that only usually holds.
+  const address = input.toLowerCase();
+  if (
+    address.includes("@g.us") ||
+    address.includes("@broadcast") ||
+    address.includes("@lid")
+  ) {
+    return null;
+  }
 
   // Messaging ids can carry a device suffix: 919876543210:12@c.us.
   const local = input.split("@")[0].split(":")[0];

@@ -151,6 +151,21 @@ export type OpenWAWebhook = {
   isActive?: boolean;
 };
 
+/**
+ * A contact as the gateway returns it.
+ *
+ * `id` is the addressable WhatsApp id — "919035367324@c.us" — and it is the
+ * only field that carries the real number for a privacy-masked sender.
+ * `number` keeps showing the masked pseudo-number, so reading it back gives
+ * you the same fabricated digits you were trying to resolve.
+ */
+export type OpenWAContact = {
+  id?: string;
+  number?: string;
+  name?: string;
+  pushname?: string;
+};
+
 export type OpenWASendResult = {
   id?: string;
   messageId?: string;
@@ -165,6 +180,15 @@ export const openWA = {
       config,
       "GET",
       `/api/sessions/${encodeURIComponent(config.sessionId)}`,
+    );
+  },
+
+  /** Accepts a plain number, a "@c.us" id, or a "@lid" masked id. */
+  getContact(contactId: string, config = openWAConfig()) {
+    return request<OpenWAContact>(
+      config,
+      "GET",
+      `/api/sessions/${encodeURIComponent(config.sessionId)}/contacts/${encodeURIComponent(contactId)}`,
     );
   },
 

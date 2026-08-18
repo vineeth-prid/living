@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 54 assertions covering signature verification
+`npm run check:whatsapp` — 62 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,51 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## Privacy-masked senders (@lid)
+
+Some sessions mask every inbound sender as `210354630082686@lid` instead of a
+phone number. This is a property of the session, not a per-user privacy setting
+— on the staging session it was every message from every number.
+
+The digits in front of `@lid` are a pseudo-id. They are not a phone number, but
+they are fifteen digits, which is a legal E.164 length, so a naive parse
+produces a plausible-looking fabrication. That fabrication is worse than a
+failure: employee matching joins on the real number, so an admin-enabled phone
+was silently routed down the anonymous-customer path,
+`whatsapp_command_executions` stayed empty because no command ever got the
+chance to run, and replies were addressed to a number that does not exist.
+
+Handling, in three places:
+
+- `lib/phone.ts` refuses `@lid` outright, alongside `@g.us` and `@broadcast`.
+  Nothing anywhere can turn a mask into a number by accident.
+- `openwa/webhook.ts` carries the mask forward as `senderLid` and leaves
+  `fromPhone` null. It does **not** look the number up: that function runs
+  before the webhook is acknowledged, and a gateway round trip on that path is
+  what becomes a timeout and a redelivery.
+- `openwa/lid.ts` does the lookup during routing, which runs after the
+  response is flushed. Results are cached per process for six hours, since the
+  same sender arrives on every message they send.
+
+The lookup is `GET /api/sessions/:sessionId/contacts/:contactId`, and it takes
+the `@lid` value as `contactId`. **The real number comes back in `id`** —
+`"919035367324@c.us"` — **not in `number`**, which still holds the mask. Reading
+`number` returns the same garbage the lookup exists to replace.
+
+If a mask cannot be resolved, routing throws rather than falling back. The
+route's catch writes the reason onto the `whatsapp_webhook_events` row, so an
+unidentifiable sender is visible in the table instead of disappearing as a
+skipped message. Query for it with:
+
+```sql
+select received_at, error from whatsapp_webhook_events
+where status = 'failed' and error like '%masked sender%'
+order by received_at desc;
+```
+
+If a payload states the number outright — `senderPhone`, `senderNumber`, or
+`metadata.senderPhone` — that wins and no lookup happens.
 
 ## Still to verify against the live instance
 

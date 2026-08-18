@@ -62,8 +62,14 @@ export type InboundEvent = {
 export type InboundMessage = {
   providerMessageId: string;
   chatId: string;
-  /** E.164 without the plus, already normalised. */
-  fromPhone: string;
+  /**
+   * E.164 without the plus, already normalised — or null when the gateway
+   * masked the sender. A masked sender carries `senderLid` instead and the
+   * real number has to be fetched before the message can be routed.
+   */
+  fromPhone: string | null;
+  /** WhatsApp's privacy-masked sender id, e.g. "210354630082686@lid". */
+  senderLid: string | null;
   senderName: string | null;
   type: string;
   text: string;

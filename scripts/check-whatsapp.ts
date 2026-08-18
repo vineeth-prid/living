@@ -34,6 +34,12 @@ import { resolveRelativeDate, scheduleAt } from "../lib/crm/whatsapp/dates";
 import { kindFor } from "../lib/crm/whatsapp/media";
 import { t } from "../lib/crm/whatsapp/templates";
 import { systemHealth } from "../lib/health";
+import { openWA } from "../lib/integrations/whatsapp/openwa/client";
+import {
+  __resetLidCache,
+  isLidId,
+  resolveLidPhone,
+} from "../lib/integrations/whatsapp/openwa/lid";
 
 const SECRET = "s".repeat(64);
 
@@ -830,6 +836,135 @@ async function main() {
     // MinIO, Ollama and WhatsApp.
     assert.ok(rows.every((row) => typeof row.detail === "string" && row.detail));
     assert.equal(rows.find((row) => row.label === "WhatsApp")?.ok, true);
+  });
+
+  // --- privacy-masked senders (@lid) --------------------------------------
+  //
+  // Regression cases for a live bug: every inbound message on the staging
+  // session arrived masked as "210354630082686@lid". Those digits parsed as a
+  // valid E.164 number, so a fabricated contact was stored, employee matching
+  // never matched, commands never ran, and replies went to a number that does
+  // not exist.
+
+  const LID = "210354630082686@lid";
+  const REAL = "919035367324";
+
+  check("a masked sender id is not a phone number", () => {
+    // The root cause. @g.us and @broadcast were already refused; @lid was not,
+    // and 15 digits is a legal E.164 length, so it sailed through.
+    assert.equal(normalisePhone(LID), null, "@lid must never normalise");
+    assert.equal(normalisePhone("210354630082686@LID"), null, "case-insensitive");
+    // The ordinary forms must still work.
+    assert.equal(normalisePhone("919876543210@c.us")?.phoneNumber, "919876543210");
+    assert.equal(normalisePhone("9876543210")?.phoneNumber, "919876543210");
+  });
+
+  check("isLidId spots the mask and nothing else", () => {
+    assert.equal(isLidId(LID), true);
+    assert.equal(isLidId("210354630082686@LID"), true);
+    assert.equal(isLidId("919876543210@c.us"), false);
+    assert.equal(isLidId("12036304@g.us"), false);
+    assert.equal(isLidId(null), false);
+  });
+
+  check("a masked delivery survives parsing with no invented number", () => {
+    const body = envelope({ ...TEXT_MESSAGE, chatId: LID, from: LID });
+    const result = parseOpenWAWebhook(body, headersFor(body), SECRET);
+    assert.ok(!("rejected" in result), "a masked sender is not a forgery");
+    // The message must NOT be dropped — dropping it loses a real message.
+    assert.ok(result.message, "masked messages must reach the routing step");
+    assert.equal(result.message?.fromPhone, null, "no fabricated number");
+    assert.equal(result.message?.senderLid, LID, "the mask is carried forward");
+    // The specific garbage this bug produced.
+    assert.notEqual(result.message?.fromPhone, "210354630082686");
+  });
+
+  check("a stated sender phone beats the mask", () => {
+    const body = envelope({
+      ...TEXT_MESSAGE,
+      chatId: LID,
+      from: LID,
+      senderPhone: "+91 90353 67324",
+    });
+    const result = parseOpenWAWebhook(body, headersFor(body), SECRET);
+    assert.ok(!("rejected" in result));
+    assert.equal(result.message?.fromPhone, REAL, "no lookup needed");
+    assert.equal(result.message?.senderLid, null);
+  });
+
+  check("an ordinary sender is unaffected", () => {
+    const body = envelope(TEXT_MESSAGE);
+    const result = parseOpenWAWebhook(body, headersFor(body), SECRET);
+    assert.ok(!("rejected" in result));
+    assert.equal(result.message?.fromPhone, "919876543210");
+    assert.equal(result.message?.senderLid, null);
+  });
+
+  check("the resolver reads id, not number", async () => {
+    // The trap: the gateway answers a lid lookup with the real number in `id`
+    // and the masked pseudo-number still sitting in `number`. Reading `number`
+    // hands back exactly the garbage we are trying to get rid of.
+    __resetLidCache();
+    const original = openWA.getContact;
+    let calls = 0;
+    openWA.getContact = (async () => {
+      calls += 1;
+      return { id: "919035367324@c.us", number: "210354630082686" };
+    }) as typeof openWA.getContact;
+
+    try {
+      const phone = await resolveLidPhone(LID);
+      assert.equal(phone?.phoneNumber, REAL, "must come from id");
+      assert.notEqual(phone?.phoneNumber, "210354630082686", "must not come from number");
+
+      // Same sender on every message, so the lookup is cached.
+      await resolveLidPhone(LID);
+      assert.equal(calls, 1, "a repeat lookup must be served from cache");
+    } finally {
+      openWA.getContact = original;
+      __resetLidCache();
+    }
+  });
+
+  check("an unresolvable mask refuses rather than guesses", async () => {
+    __resetLidCache();
+    const original = openWA.getContact;
+
+    try {
+      // Gateway unreachable.
+      openWA.getContact = (async () => {
+        throw new Error("ECONNREFUSED");
+      }) as typeof openWA.getContact;
+      assert.equal(await resolveLidPhone(LID), null, "an error is not a number");
+
+      // Gateway answers, but only with the masked number and no usable id.
+      __resetLidCache();
+      openWA.getContact = (async () => ({
+        number: "210354630082686",
+      })) as typeof openWA.getContact;
+      assert.equal(await resolveLidPhone(LID), null, "number alone is not enough");
+
+      // Gateway echoes the mask back in id.
+      __resetLidCache();
+      openWA.getContact = (async () => ({ id: LID })) as typeof openWA.getContact;
+      assert.equal(await resolveLidPhone(LID), null, "a lid in id is still a lid");
+    } finally {
+      openWA.getContact = original;
+      __resetLidCache();
+    }
+  });
+
+  check("a masked group is still refused", () => {
+    // A mask must not become a way past the group check.
+    const body = envelope({
+      ...TEXT_MESSAGE,
+      chatId: "12036304@g.us",
+      from: "12036304@g.us",
+      author: LID,
+    });
+    const result = parseOpenWAWebhook(body, headersFor(body), SECRET);
+    assert.ok(!("rejected" in result));
+    assert.equal(result.message?.fromPhone, null);
   });
 
   await Promise.all(pending);

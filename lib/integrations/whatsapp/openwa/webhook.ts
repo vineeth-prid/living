@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { normalisePhone } from "../phone";
+import { isLidId } from "./lid";
 import type {
   InboundEvent,
   InboundMedia,
@@ -158,8 +159,26 @@ function toMessage(data: Record<string, unknown> | undefined): InboundMessage | 
     return null;
   }
 
-  const from = normalisePhone(str(data.from) ?? chatId);
-  if (!from) return null; // group or malformed sender
+  // Sender identity. Three cases, in order of how much they can be trusted:
+  //
+  //  1. the payload states the number outright — use it;
+  //  2. the sender is privacy-masked ("...@lid") — the digits are a pseudo-id,
+  //     so carry the mask forward and let the routing step ask the gateway for
+  //     the real number. Parsing it here would fabricate a contact;
+  //  3. an ordinary "@c.us" id or bare number — normalise as before.
+  //
+  // The lookup is deliberately not done here: this function runs before the
+  // webhook is acknowledged, and a gateway round trip on that path is what
+  // turns into a timeout and a redelivery.
+  const stated = normalisePhone(
+    str(data.senderPhone) ?? str(data.senderNumber) ?? str(meta.senderPhone),
+  );
+  const maskedId = [str(data.from), chatId, str(data.author)].find(isLidId) ?? null;
+
+  const from = stated ?? (maskedId ? null : normalisePhone(str(data.from) ?? chatId));
+
+  // No number and no mask to resolve one from: a group or a malformed sender.
+  if (!from && !maskedId) return null;
 
   const timestamp = num(data.timestamp);
   const media = toMedia(data, meta);
@@ -167,7 +186,8 @@ function toMessage(data: Record<string, unknown> | undefined): InboundMessage | 
   return {
     providerMessageId,
     chatId,
-    fromPhone: from.phoneNumber,
+    fromPhone: from?.phoneNumber ?? null,
+    senderLid: from ? null : maskedId,
     senderName:
       str(data.pushName) ??
       str(data.notifyName) ??

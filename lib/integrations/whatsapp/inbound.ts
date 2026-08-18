@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { whatsappMessages, whatsappSessions } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { normalisePhone } from "./phone";
+import { resolveLidPhone } from "./openwa/lid";
 import { resolveSender } from "./identity";
 import {
   currentSessionRow,
@@ -61,8 +62,25 @@ async function recordAck(event: InboundEvent) {
 }
 
 async function routeMessage(event: InboundEvent, message: InboundMessage) {
-  const phone = normalisePhone(message.fromPhone);
-  if (!phone) return;
+  // A privacy-masked sender ("...@lid") reaches here with no number: the
+  // parser refuses to invent one. Ask the gateway now — this runs after the
+  // webhook has been acknowledged, so the round trip costs nothing that OpenWA
+  // is waiting on.
+  const phone = message.senderLid
+    ? await resolveLidPhone(message.senderLid)
+    : normalisePhone(message.fromPhone);
+
+  if (!phone) {
+    if (message.senderLid) {
+      // Throwing rather than returning: the route's catch writes the reason
+      // onto the webhook event row, so an unidentifiable sender is visible in
+      // the table instead of vanishing as a silently skipped message.
+      throw new Error(
+        `could not resolve masked sender ${message.senderLid} to a phone number`,
+      );
+    }
+    return;
+  }
 
   const sender = await resolveSender(phone.nationalDigits);
   const session = await currentSessionRow();
