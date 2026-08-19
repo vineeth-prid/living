@@ -42,11 +42,39 @@ export const INTENTS = [
 export type Intent = (typeof INTENTS)[number];
 
 /**
+ * "Not present" arrives in three spellings, and only one of them is the one
+ * the schema was written for.
+ *
+ * A model answering in `format: "json"` against a fixed shape fills in every
+ * documented key. When it has no value for one, what comes back is `""` or
+ * `null` — not an absent key. `.optional()` accepts only absent-or-undefined,
+ * so an empty string is a length violation, and one blank field discards the
+ * whole response including a perfectly correct intent.
+ *
+ * Normalising here rather than on each field is deliberate: every optional
+ * field in this file has the same shape and would need the same guard, and a
+ * field added later would silently reintroduce the bug.
+ */
+const dropBlanks = (value: unknown) => {
+  // A null object is an absent object; let `.default({})` do its job.
+  if (value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) return value;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+    if (v === null || v === undefined) continue;
+    if (typeof v === "string" && v.trim() === "") continue;
+    out[key] = v;
+  }
+  return out;
+};
+
+/**
  * Entities are all optional and all loosely typed on purpose: this is what the
  * model claims it read, not what the CRM will act on. Each command handler
  * re-validates the fields it needs and resolves names to real rows itself.
  */
-const entities = z
+const entityFields = z
   .object({
     leadName: z.string().trim().min(1).optional(),
     leadReference: z.string().trim().min(1).optional(),
@@ -86,11 +114,17 @@ const entities = z
   })
   .partial();
 
+// `?? {}` rather than `.default({})`: a default only fires on undefined, and
+// it is checked before the preprocessor runs — so `"entities": null`, which is
+// what a model sends for an action carrying none, would reach the object parse
+// as undefined and fail.
+const entities = z.preprocess((value) => dropBlanks(value) ?? {}, entityFields);
+
 export type Entities = z.infer<typeof entities>;
 
 const action = z.object({
   intent: z.enum(INTENTS),
-  entities: entities.default({}),
+  entities,
 });
 
 export type IntentAction = z.infer<typeof action>;
@@ -101,12 +135,15 @@ export type IntentAction = z.infer<typeof action>;
  * follow-up. Forcing that into one intent would silently drop two of the three,
  * so the model returns a list and the pipeline executes it in order.
  */
-export const intentSchema = z.object({
-  actions: z.array(action).min(1).max(5),
-  confidence: z.number().min(0).max(1),
-  /** What to ask when the model could not resolve something itself. */
-  question: z.string().trim().min(1).max(300).optional(),
-});
+export const intentSchema = z.preprocess(
+  dropBlanks,
+  z.object({
+    actions: z.array(action).min(1).max(5),
+    confidence: z.number().min(0).max(1),
+    /** What to ask when the model could not resolve something itself. */
+    question: z.string().trim().min(1).max(300).optional(),
+  }),
+);
 
 export type ParsedIntent = z.infer<typeof intentSchema>;
 

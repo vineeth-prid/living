@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 62 assertions covering signature verification
+`npm run check:whatsapp` — 68 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,29 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## Blank fields from the model
+
+A model answering in `format: "json"` against a fixed shape fills in every
+documented key. When it has no value for one, what comes back is `""` or
+`null` — not an absent key. Zod's `.optional()` accepts absent-or-undefined
+and nothing else, so `""` is a length violation and the whole response is
+discarded, correct intent and all.
+
+This cost every employee command a "question: Too small" failure until
+`schema.ts` started normalising. It is a property of the shape, not of the
+model: llama3.2:3b and qwen3:8b produced the identical `"question": ""` on the
+same message, both having classified the intent correctly.
+
+`dropBlanks` in `lib/ai/crm-intent/schema.ts` strips `""`, whitespace-only
+strings and `null` before validation, at the object level rather than per
+field — every optional field in that file has the same shape, and a field added
+later would otherwise reintroduce it. The prompt also now states the convention
+outright, so the schema is a guarantee rather than the only line of defence.
+
+Normalising removes a spelling of "absent"; it does not loosen anything. An
+unknown intent, an out-of-range confidence, an empty action list, more than
+five actions and an over-long question are all still refused.
 
 ## Privacy-masked senders (@lid)
 

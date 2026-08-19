@@ -967,6 +967,116 @@ async function main() {
     assert.equal(result.message?.fromPhone, null);
   });
 
+  // --- blank fields from the model ----------------------------------------
+  //
+  // Regression cases for a live bug: every employee command failed with
+  // "question: Too small: expected string to have >=1 characters". In
+  // format:"json" mode against a fixed shape, both models tested filled in
+  // every documented key — and for a key they had no value for, the plausible
+  // filler is "". .optional() accepts absent-or-undefined, never "", so a
+  // blank field discarded an otherwise perfect intent.
+
+  const ok = (raw: string) => {
+    const parsed = parseIntentJson(raw);
+    assert.ok(!("error" in parsed), `expected a parse, got: ${"error" in parsed ? parsed.error : ""}`);
+    return parsed as Exclude<typeof parsed, { error: string }>;
+  };
+
+  check("an empty question no longer discards a correct intent", () => {
+    // The exact payload from the report: CREATE_PROPERTY_DRAFT, confidence 1,
+    // question "". This is what llama3.2:3b and qwen3:8b both returned.
+    const parsed = ok(JSON.stringify({
+      actions: [{ intent: "CREATE_PROPERTY_DRAFT", entities: {} }],
+      confidence: 1.0,
+      question: "",
+    }));
+    assert.equal(parsed.actions[0].intent, "CREATE_PROPERTY_DRAFT");
+    assert.equal(parsed.confidence, 1);
+    assert.equal(parsed.question, undefined, "a blank question is an absent one");
+  });
+
+  check("null and whitespace read the same as absent", () => {
+    for (const question of [null, "   ", "\n"]) {
+      const parsed = ok(JSON.stringify({
+        actions: [{ intent: "HELP", entities: {} }],
+        confidence: 0.9,
+        question,
+      }));
+      assert.equal(parsed.question, undefined, `${JSON.stringify(question)} is not a question`);
+    }
+  });
+
+  check("a real question still survives", () => {
+    const parsed = ok(JSON.stringify({
+      actions: [{ intent: "CLARIFICATION_REQUIRED", entities: {} }],
+      confidence: 0.4,
+      question: "Which Raj do you mean?",
+    }));
+    assert.equal(parsed.question, "Which Raj do you mean?");
+  });
+
+  check("blank entity fields are dropped, not rejected", () => {
+    // The same bug, and the reason fixing only `question` would not have held:
+    // every field in `entities` has the identical .min(1).optional() shape, so
+    // the next command carrying entities would have failed the same way.
+    const parsed = ok(JSON.stringify({
+      actions: [{
+        intent: "ADD_FOLLOWUP",
+        entities: {
+          leadName: "Raj Menon",
+          note: "",
+          city: null,
+          propertyReference: "   ",
+          date: "2026-08-20",
+          amount: null,
+        },
+      }],
+      confidence: 0.95,
+    }));
+    const e = parsed.actions[0].entities;
+    assert.equal(e.leadName, "Raj Menon", "real values are untouched");
+    assert.equal(e.date, "2026-08-20");
+    assert.equal(e.note, undefined, "empty string is absent");
+    assert.equal(e.city, undefined, "null is absent");
+    assert.equal(e.propertyReference, undefined, "whitespace is absent");
+    assert.equal(e.amount, undefined, "a null number is absent");
+  });
+
+  check("a null entities object becomes an empty one", () => {
+    const parsed = ok(JSON.stringify({
+      actions: [{ intent: "GET_MY_LEADS", entities: null }],
+      confidence: 0.9,
+    }));
+    assert.deepEqual(parsed.actions[0].entities, {});
+  });
+
+  check("normalising blanks does not weaken the schema", () => {
+    // The guard removes a spelling of "absent"; it must not start accepting
+    // values that are genuinely wrong.
+    const bad = [
+      // required field blanked out is still missing, not defaulted
+      { actions: [{ intent: "HELP", entities: {} }], confidence: "" },
+      // unknown intent
+      { actions: [{ intent: "DROP_TABLE", entities: {} }], confidence: 0.9 },
+      // confidence out of range
+      { actions: [{ intent: "HELP", entities: {} }], confidence: 1.4 },
+      // no actions at all
+      { actions: [], confidence: 0.9 },
+      // more than the five-action ceiling
+      { actions: Array.from({ length: 6 }, () => ({ intent: "HELP", entities: {} })), confidence: 0.9 },
+      // a question that is too long
+      {
+        actions: [{ intent: "CLARIFICATION_REQUIRED", entities: {} }],
+        confidence: 0.4,
+        question: "x".repeat(301),
+      },
+    ];
+    for (const payload of bad) {
+      const parsed = parseIntentJson(JSON.stringify(payload));
+      assert.ok("error" in parsed, `should have been refused: ${JSON.stringify(payload).slice(0, 60)}`);
+    }
+  });
+
   await Promise.all(pending);
   console.log(`\n${checks} checks passed`);
   if (process.exitCode) console.error("Some checks failed.");
