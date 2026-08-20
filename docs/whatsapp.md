@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 94 assertions covering signature verification
+`npm run check:whatsapp` — 100 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,28 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## Filters must apply or refuse
+
+A read-only command cannot corrupt anything, so its failure mode is a
+confident wrong answer instead — and the worst of those is a filter that
+silently does not apply. "Show my hot leads" answered with every open lead,
+under the heading "Your open leads", looks like a real answer.
+
+Anything a person types at an enum arrives in their casing, or the model's.
+`matchOption` (exported from `intake.ts`, the same matcher the forms use)
+normalises case and tolerates a typo. Where it returns null the handler
+**refuses and names the valid options** rather than dropping the filter —
+`LEAD_STATUSES` already did this, and priority and follow-up kind now do too.
+
+Follow-up kind had a second edge: defaulting to "call" is right when nothing
+was said and wrong when something was, so "Site Visit" booked a call. The
+default now applies only to an empty field.
+
+`GET_MY_FOLLOWUPS` reads the day out of the message, as the rest of the CRM
+reads dates. With no day named it is today plus anything overdue; a named
+future day is that day alone, and the heading says which — a list that could
+be misread as today's is the same wrong answer in another shape.
 
 ## Updating a property
 

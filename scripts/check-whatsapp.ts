@@ -26,6 +26,8 @@ import {
 } from "../lib/crm/whatsapp/registry";
 import {
   COMMAND_EXECUTION_STATUSES,
+  FOLLOWUP_KINDS,
+  LEAD_PRIORITIES,
   whatsappCommandExecutions,
 } from "../lib/db/schema";
 import { OUTBOUND_RATE } from "../lib/integrations/whatsapp/config";
@@ -42,6 +44,7 @@ import {
   PROPERTY_KIND_FORM,
   RESIDENTIAL_FORM,
   formById,
+  matchOption,
   missingRequired,
   parseArea,
   parseForm,
@@ -1528,6 +1531,94 @@ async function main() {
     ]) {
       assert.ok(!pattern.test(no), `"${no}" belongs to the model`);
     }
+  });
+
+
+  // --- lead and follow-up reads ---------------------------------------------
+  //
+  // These are read-only, so the failure mode is not a bad write — it is a
+  // confident wrong answer. A filter that silently does not apply is exactly
+  // that: "your hot leads" listing every open lead.
+
+  check("a priority matches whatever casing the model returned", () => {
+    // "Show my hot leads" comes back as "Hot" as readily as "hot", and the
+    // case-sensitive check that used to guard this dropped the filter without
+    // saying so.
+    for (const given of ["hot", "Hot", "HOT", " hot "]) {
+      assert.equal(matchOption(given, LEAD_PRIORITIES), "hot", `"${given}"`);
+    }
+    assert.equal(matchOption("Warm", LEAD_PRIORITIES), "warm");
+    assert.equal(matchOption("Cold", LEAD_PRIORITIES), "cold");
+  });
+
+  check("a priority that is not one is refused, not ignored", () => {
+    // The handler turns this null into a reply naming the valid options. The
+    // old behaviour answered a question about urgent leads with all of them.
+    assert.equal(matchOption("purple", LEAD_PRIORITIES), null);
+    assert.equal(matchOption("urgent", LEAD_PRIORITIES), null);
+  });
+
+  check("a follow-up kind matches casing too", () => {
+    // Defaulting to "call" is right when nothing was said and wrong when
+    // something was — "Site Visit" used to book a call.
+    const visit = FOLLOWUP_KINDS.find((k) => k.includes("visit"));
+    if (visit) {
+      assert.equal(matchOption(visit.replace(/_/g, " ").toUpperCase(), FOLLOWUP_KINDS), visit);
+      assert.equal(matchOption(visit, FOLLOWUP_KINDS), visit);
+    }
+    for (const kind of FOLLOWUP_KINDS) {
+      assert.equal(matchOption(kind.toUpperCase(), FOLLOWUP_KINDS), kind, kind);
+    }
+  });
+
+  check("the day named in the message decides the follow-up window", () => {
+    // "Show my follow-ups tomorrow" used to return today's, silently.
+    const today = resolveRelativeDate("Show my follow-ups today");
+    const tomorrow = resolveRelativeDate("Show my follow-ups tomorrow");
+    assert.equal(today?.kind, "date");
+    assert.equal(tomorrow?.kind, "date");
+    assert.notEqual(
+      today?.kind === "date" ? today.iso : null,
+      tomorrow?.kind === "date" ? tomorrow.iso : null,
+      "today and tomorrow must not resolve to the same window",
+    );
+
+    // No day named is the default: today plus anything overdue.
+    assert.equal(resolveRelativeDate("Show my follow-ups"), null);
+    assert.equal(resolveRelativeDate("Show my leads"), null);
+  });
+
+  check("the follow-up heading says which day it covers", () => {
+    const rows = [
+      { leadName: "Raj Menon", leadReference: "LD-0001", dueAt: new Date(), kind: "call" },
+    ];
+    assert.match(t.followups(rows), /\*Your follow-ups\* \(1\)/, "no day named");
+    assert.match(
+      t.followups(rows, "on 2026-08-21"),
+      /Your follow-ups on 2026-08-21/,
+      "a named day is stated, so the list cannot be misread as today's",
+    );
+    assert.match(t.followupsEmpty(), /overdue/i);
+    assert.match(t.followupsEmpty("on 2026-08-21"), /No follow-ups on 2026-08-21/);
+  });
+
+  check("a lead card shows no internal figure", () => {
+    // §25: the projection is the protection, and the template has no branch
+    // that could print one either.
+    const card = t.lead({
+      name: "Raj Menon",
+      reference: "LD-0001",
+      status: "in_discussion",
+      priority: "hot",
+      mobile: "919876543210",
+      city: "Kochi",
+      budgetMax: 9_000_000,
+      nextFollowUpAt: null,
+    });
+    assert.match(card, /Raj Menon/);
+    assert.match(card, /₹90L/, "the budget uses the same shorthand as everywhere");
+    assert.match(card, /in discussion/, "statuses read as words, not enum keys");
+    assert.match(card, /No follow-up scheduled/);
   });
 
 

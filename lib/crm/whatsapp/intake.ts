@@ -94,6 +94,20 @@ function distance(a: string, b: string): number {
 /** How much misspelling to forgive: more for longer words, never more than 3. */
 const tolerance = (s: string) => Math.min(3, Math.floor(s.length / 4) + 1);
 
+/**
+ * The closest of a fixed set of options, or null.
+ *
+ * Exported because every enum a person types at us has the same problem: the
+ * casing is theirs, and a value that does not match must not be silently
+ * dropped. Used for form fields here and for command filters in handlers.ts.
+ */
+export function matchOption(
+  input: string,
+  candidates: readonly string[],
+): string | null {
+  return closest(input, candidates);
+}
+
 function closest(input: string, candidates: readonly string[]): string | null {
   const needle = key(input);
   if (!needle) return null;

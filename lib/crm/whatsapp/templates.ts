@@ -67,13 +67,17 @@ export const t = {
   followupAdded: (lead: string, when: string) =>
     `✅ Follow-up added for ${lead} — ${when}.`,
 
-  followupsEmpty: () => "No follow-ups pending. Nothing overdue either.",
+  followupsEmpty: (when?: string) =>
+    when
+      ? `No follow-ups ${when}.`
+      : "No follow-ups pending. Nothing overdue either.",
 
   followups: (
     rows: { leadName: string; leadReference: string; dueAt: Date; kind: string }[],
+    when?: string,
   ) =>
     [
-      `*Your follow-ups* (${rows.length})`,
+      `*Your follow-ups${when ? ` ${when}` : ""}* (${rows.length})`,
       "",
       ...rows.map(
         (row, i) =>

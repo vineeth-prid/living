@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  LEAD_PRIORITIES,
   LEAD_STATUSES,
   FOLLOWUP_KINDS,
   leadFollowups,
@@ -28,6 +29,7 @@ import { can } from "@/lib/auth/dal";
 import { PERMISSIONS } from "@/lib/auth/constants";
 import { priceLabelFor, publishBlockers } from "@/lib/validation/property";
 import { amountFrom } from "@/lib/money";
+import { matchOption } from "./intake";
 import type { SessionUser } from "@/lib/auth/session";
 import type { Entities } from "@/lib/ai/crm-intent/schema";
 import {
@@ -41,8 +43,8 @@ import type { LeadStatus } from "@/lib/db/schema";
 import { propertyInThread, resolveLead, resolveProperty } from "./resolve";
 import { helpFor } from "./registry";
 import { t, dateTime, inr } from "./templates";
-import { crmDayBounds } from "./time";
-import { scheduleAt } from "./dates";
+import { crmDayBounds, zonedDateTime } from "./time";
+import { resolveRelativeDate, scheduleAt } from "./dates";
 
 // The CRM half. Every function here has already passed the registry's
 // permission check and, where required, an explicit confirmation — so each one
@@ -151,7 +153,22 @@ async function needProperty(
 // --- reads ----------------------------------------------------------------
 
 export async function getMyFollowups(ctx: HandlerContext): Promise<HandlerResult> {
-  const { to } = crmDayBounds();
+  // "Show my follow-ups tomorrow" used to return today's, silently. The day is
+  // read from the message the same way a follow-up's due date is.
+  const said = resolveRelativeDate(ctx.text);
+  const namedDay = said?.kind === "date" ? said.iso : null;
+
+  const today = crmDayBounds();
+  const start = namedDay ? zonedDateTime(namedDay, "00:00") : null;
+  const isToday = start !== null && start.getTime() === today.from.getTime();
+
+  // A named future day is that day alone. With no day named — or with "today"
+  // — anything already overdue still needs calling, so the window opens at the
+  // beginning of time.
+  const from = start && !isToday ? start : null;
+  const to =
+    from !== null ? new Date(from.getTime() + 24 * 60 * 60 * 1000 - 1) : today.to;
+  const when = namedDay && !isToday ? `on ${namedDay}` : undefined;
 
   const rows = await db()
     .select({
@@ -168,6 +185,7 @@ export async function getMyFollowups(ctx: HandlerContext): Promise<HandlerResult
         eq(leadFollowups.status, "pending"),
         // Today and anything already overdue — an old one still needs calling.
         lte(leadFollowups.dueAt, to),
+        from ? gte(leadFollowups.dueAt, from) : undefined,
         isNull(leads.deletedAt),
       ),
     )
@@ -175,17 +193,30 @@ export async function getMyFollowups(ctx: HandlerContext): Promise<HandlerResult
     // §27: a phone is not a report. Ten is a list; two hundred is a wall.
     .limit(10);
 
-  if (rows.length === 0) return ok(t.followupsEmpty());
-  return ok(t.followups(rows));
+  if (rows.length === 0) return ok(t.followupsEmpty(when));
+  return ok(t.followups(rows, when));
 }
 
 export async function getMyLeads(
   ctx: HandlerContext,
   e: Entities,
 ): Promise<HandlerResult> {
-  const priority = ["hot", "warm", "cold"].includes(e.priority ?? "")
-    ? e.priority
-    : undefined;
+  // "Show my hot leads" comes back from the model as "Hot" as often as "hot",
+  // and a case-sensitive check silently dropped the filter — answering a
+  // question about hot leads with every open lead, labelled as such.
+  //
+  // Refused rather than dropped when it matches nothing: a filter that quietly
+  // does not apply is a wrong answer wearing a right one's clothes.
+  let priority: string | undefined;
+  if (e.priority) {
+    const matched = matchOption(e.priority, LEAD_PRIORITIES);
+    if (!matched) {
+      return no(
+        `"${e.priority}" isn't a priority. Valid ones: ${LEAD_PRIORITIES.join(", ")}.`,
+      );
+    }
+    priority = matched;
+  }
 
   const rows = await db()
     .select({
@@ -281,9 +312,18 @@ export async function addFollowup(
   if (!when.ok) return needs(when.ask, e);
   const dueAt = when.dueAt;
 
-  const kind = (FOLLOWUP_KINDS as readonly string[]).includes(e.followUpKind ?? "")
-    ? (e.followUpKind as string)
-    : "call";
+  // Defaulting to "call" is right when nothing was said, and wrong when
+  // something was: "site visit" coming back as "Site Visit" booked a call.
+  let kind = "call";
+  if (e.followUpKind) {
+    const matched = matchOption(e.followUpKind, FOLLOWUP_KINDS);
+    if (!matched) {
+      return no(
+        `"${e.followUpKind}" isn't a follow-up kind. Valid ones: ${FOLLOWUP_KINDS.join(", ").replace(/_/g, " ")}.`,
+      );
+    }
+    kind = matched;
+  }
 
   // §2: the shared service, so a follow-up booked here is identical to one
   // booked in the panel — same activity kind, same nextFollowUpAt recompute.
