@@ -35,6 +35,7 @@ import { kindFor } from "../lib/crm/whatsapp/media";
 import { t } from "../lib/crm/whatsapp/templates";
 import type { HandlerResult } from "../lib/crm/whatsapp/handlers";
 import { systemHealth } from "../lib/health";
+import { publishBlockers } from "../lib/validation/property";
 import {
   COMMERCIAL_FORM,
   LEAD_FORM,
@@ -1407,6 +1408,128 @@ async function main() {
     assert.equal(result.ok, false);
     assert.equal(result.needsProperty, true, "the pipeline branches on this");
   });
+
+  // --- the add-a-property flow, end to end ----------------------------------
+  //
+  // Gap analysis against the expected workflow found three things missing:
+  // the inline photo payload arrives as `media.data` and only `base64`
+  // spellings were read; there was no step 7 at all; and "publish" with no
+  // reference could not resolve a property.
+
+  check("step 6: an inline photo is read from media.data", () => {
+    // The spelling the gateway actually sends. Reading only `base64` meant the
+    // photo arrived with nothing in it.
+    const body = envelope({
+      ...TEXT_MESSAGE,
+      type: "image",
+      body: "",
+      media: { data: "BASE64PAYLOAD", mimetype: "image/jpeg", filename: "front.jpg" },
+    });
+    const result = parseOpenWAWebhook(body, headersFor(body), SECRET);
+    assert.ok(!("rejected" in result));
+    assert.equal(result.message?.media?.base64, "BASE64PAYLOAD", "media.data must be read");
+    assert.equal(result.message?.media?.mimeType, "image/jpeg");
+    assert.equal(result.message?.media?.filename, "front.jpg");
+  });
+
+  check("step 6: the documented spellings still work", () => {
+    for (const media of [
+      { base64: "P", mimetype: "image/png" },
+      { data: "P", mimetype: "image/png" },
+    ]) {
+      const body = envelope({ ...TEXT_MESSAGE, type: "image", body: "", media });
+      const result = parseOpenWAWebhook(body, headersFor(body), SECRET);
+      assert.ok(!("rejected" in result));
+      assert.equal(result.message?.media?.base64, "P", JSON.stringify(media));
+    }
+
+    // mediaBase64 as a flat column, which the docs describe.
+    const flat = envelope({
+      ...TEXT_MESSAGE,
+      type: "image",
+      body: "",
+      mediaBase64: "F",
+      mediaMimetype: "image/webp",
+    });
+    const result = parseOpenWAWebhook(flat, headersFor(flat), SECRET);
+    assert.ok(!("rejected" in result));
+    assert.equal(result.message?.media?.base64, "F");
+  });
+
+  check("step 6: the envelope's own data is never mistaken for a photo", () => {
+    // `data` at the top level is the message body, not an image. Reading it
+    // would attach garbage to every listing.
+    const body = envelope({ ...TEXT_MESSAGE, type: "text" });
+    const result = parseOpenWAWebhook(body, headersFor(body), SECRET);
+    assert.ok(!("rejected" in result));
+    assert.equal(result.message?.media, null, "a text message carries no media");
+  });
+
+  check("step 7: the preview names the property and the photo count", () => {
+    const withPhotos = t.photosDone("LIV-0009", 3, "https://livingbyitr.com/admin/properties/x");
+    assert.match(withPhotos, /3 photos on LIV-0009/);
+    assert.match(withPhotos, /admin\/properties/, "the link is the panel, not the public site");
+    assert.match(withPhotos, /publish/i, "it says what to do next");
+
+    // Singular, because "1 photos" reads as a bug.
+    assert.match(t.photosDone("LIV-0009", 1, "u"), /1 photo on/);
+
+    // Publishing is blocked without a photo, so the preview says so rather
+    // than inviting a publish that will be refused.
+    const none = t.photosDone("LIV-0009", 0, "u");
+    assert.match(none, /No photos/i);
+    assert.match(none, /can't be published/i);
+  });
+
+  check("step 7: the preview link is never a public URL", () => {
+    const message = t.photosDone("LIV-0009", 2, "https://livingbyitr.com/admin/properties/x");
+    assert.ok(
+      !/\/homes\//.test(message),
+      "a draft has no public page — the link must stay behind the login",
+    );
+  });
+
+  check("steps 8-10: publishing is gated and flips both flags", () => {
+    // The registry decides this, not the model's confidence.
+    assert.equal(COMMANDS.PUBLISH_PROPERTY.requiresConfirmation, true);
+    assert.equal(COMMANDS.PUBLISH_PROPERTY.risk, "high");
+    assert.equal(COMMANDS.UNPUBLISH_PROPERTY.requiresConfirmation, true);
+
+    // And it cannot go live without the things the website needs.
+    const blockers = publishBlockers({
+      name: "Lakeside villa",
+      summary: "A calm four-bedroom home near the lake, with good light.",
+      city: "Kochi",
+      locality: "Kakkanad",
+      priceLabel: "₹85L",
+      askingPrice: 8_500_000,
+      listingType: "sale",
+      mediaCount: 0,
+    });
+    assert.ok(
+      blockers.some((b) => /photo/i.test(b)),
+      "no photo means no publish",
+    );
+  });
+
+  check("the done/skip words are matched exactly, not loosely", () => {
+    // Matched rather than classified, so the model cannot turn "done" into
+    // something else — but it must not swallow a sentence that merely
+    // contains the word.
+    const pattern = /^(done|skip|finished|that'?s all|no more)[.!]?$/i;
+    for (const yes of ["done", "Done", "DONE.", "skip", "finished", "that's all", "no more"]) {
+      assert.ok(pattern.test(yes), `"${yes}" should end the photo step`);
+    }
+    for (const no of [
+      "mark that follow-up done",
+      "done with the Kakkanad site visit",
+      "skip the second floor",
+      "are we done?",
+    ]) {
+      assert.ok(!pattern.test(no), `"${no}" belongs to the model`);
+    }
+  });
+
 
   await Promise.all(pending);
   console.log(`\n${checks} checks passed`);

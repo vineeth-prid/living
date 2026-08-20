@@ -191,6 +191,19 @@ export const t = {
       "Send just those again.",
     ].join("\n"),
 
+  /** Step 7: photos are in, here is where to look before it goes live. */
+  photosDone: (reference: string, photos: number, reviewUrl: string) =>
+    [
+      photos === 0
+        ? `No photos on ${reference} yet — it can't be published without at least one.`
+        : `${photos} photo${photos === 1 ? "" : "s"} on ${reference}.`,
+      "",
+      "Here's the preview (staff login required):",
+      reviewUrl,
+      "",
+      `Reply *publish* when it looks right, or open the link to fix something first.`,
+    ].join("\n"),
+
   draftCreated: (reference: string, name: string, reviewUrl: string) =>
     [
       `✅ Draft created — ${reference}, ${name}.`,

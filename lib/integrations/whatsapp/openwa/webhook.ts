@@ -238,8 +238,17 @@ function toMedia(
 
   const url = path && !/^https?:\/\//i.test(path) ? resolveMediaPath(path) : path;
 
+  // `media.data` is the spelling the gateway actually uses for the inline
+  // payload; the documented `base64` ones are kept because a different engine
+  // build may use them. Note `nested.data` — never `data.data`, which is the
+  // envelope's own body and not a photograph.
   const base64 =
-    str(data.mediaBase64) ?? str(meta.base64) ?? str(nested.base64) ?? str(data.base64);
+    str(data.mediaBase64) ??
+    str(nested.data) ??
+    str(nested.base64) ??
+    str(meta.base64) ??
+    str(meta.data) ??
+    str(data.base64);
 
   if (!mimeType && !url && !base64) return null;
 

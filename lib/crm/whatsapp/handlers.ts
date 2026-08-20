@@ -37,7 +37,7 @@ import {
   type IntakeState,
 } from "./intake";
 import type { LeadStatus } from "@/lib/db/schema";
-import { resolveLead, resolveProperty } from "./resolve";
+import { propertyInThread, resolveLead, resolveProperty } from "./resolve";
 import { helpFor } from "./registry";
 import { t, dateTime, inr } from "./templates";
 import { crmDayBounds } from "./time";
@@ -119,7 +119,22 @@ async function needLead(
 type ResolvedProperty = Awaited<ReturnType<typeof resolveProperty>>;
 type PropertyRow = Extract<ResolvedProperty, { kind: "one" }>["value"];
 
-async function needProperty(e: Entities): Promise<Need<PropertyRow>> {
+async function needProperty(
+  e: Entities,
+  /** Falls back to the property this thread is about, when none is named. */
+  conversationId?: string,
+): Promise<Need<PropertyRow>> {
+  // Nothing named at all: "publish", straight after creating and
+  // photographing a draft. The thread already knows which one.
+  //
+  // Only when nothing was named. An explicit reference that fails to resolve
+  // must stay an error — "publish LIV-9999" publishing whatever was last
+  // discussed is exactly the kind of confident wrong answer to avoid.
+  if (!e.propertyReference && !e.propertyQuery && conversationId) {
+    const inThread = await propertyInThread(conversationId);
+    if (inThread) return { ok: true, value: inThread };
+  }
+
   const found = await resolveProperty({
     reference: e.propertyReference,
     text: e.propertyQuery,
@@ -232,8 +247,9 @@ export async function getLead(
 export async function getProperty(
   e: Entities,
   viewer?: SessionUser,
+  conversationId?: string,
 ): Promise<HandlerResult> {
-  const found = await needProperty(e);
+  const found = await needProperty(e, conversationId);
   if (!found.ok) return no(found.fail);
 
   let finalPrice: number | null = null;
@@ -369,7 +385,7 @@ export async function associatePropertyToLead(
 ): Promise<HandlerResult> {
   const lead = await needLead(ctx, e);
   if (!lead.ok) return no(lead.fail);
-  const property = await needProperty(e);
+  const property = await needProperty(e, ctx.conversationId);
   if (!property.ok) return no(property.fail);
 
   await db()
@@ -428,7 +444,7 @@ export async function updatePropertyPrice(
   ctx: HandlerContext,
   e: Entities,
 ): Promise<HandlerResult> {
-  const found = await needProperty(e);
+  const found = await needProperty(e, ctx.conversationId);
   if (!found.ok) return no(found.fail);
   if (e.amount === undefined) return no("What should the new asking price be?");
 
@@ -476,7 +492,7 @@ export async function setPublished(
 ): Promise<HandlerResult> {
   if (!can(ctx.user, PERMISSIONS.propertyPublish)) return no(t.notPermitted());
 
-  const found = await needProperty(e);
+  const found = await needProperty(e, ctx.conversationId);
   if (!found.ok) return no(found.fail);
   const label = found.value.reference ?? found.value.name;
 
@@ -606,7 +622,7 @@ export async function awaitPropertyMedia(
   ctx: HandlerContext,
   e: Entities,
 ): Promise<HandlerResult> {
-  const found = await needProperty(e);
+  const found = await needProperty(e, ctx.conversationId);
   if (!found.ok) return no(found.fail);
 
   await db()
@@ -779,7 +795,7 @@ export async function updatePropertyField(
 ): Promise<HandlerResult> {
   if (e.amount !== undefined && !e.field) return updatePropertyPrice(ctx, e);
 
-  const found = await needProperty(e);
+  const found = await needProperty(e, ctx.conversationId);
   if (!found.ok) return no(found.fail);
 
   const key = (e.field ?? "").toLowerCase().trim();
@@ -862,7 +878,10 @@ export async function getSystemStatus(): Promise<HandlerResult> {
 }
 
 /** Current asking price, for the confirmation question (§6). */
-export async function currentAskingPrice(e: Entities): Promise<number | null> {
-  const found = await needProperty(e);
+export async function currentAskingPrice(
+  e: Entities,
+  conversationId?: string,
+): Promise<number | null> {
+  const found = await needProperty(e, conversationId);
   return found.ok ? found.value.askingPrice : null;
 }

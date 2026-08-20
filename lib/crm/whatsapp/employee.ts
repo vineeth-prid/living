@@ -1,6 +1,7 @@
-import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  propertyMedia,
   whatsappCommandExecutions,
   whatsappConversations,
 } from "@/lib/db/schema";
@@ -22,6 +23,8 @@ import {
   type IntakeState,
 } from "./intake";
 import { attachWhatsAppMedia } from "./media";
+import { propertyInThread } from "./resolve";
+import { adminPropertyUrl } from "@/lib/site";
 import { inr, t } from "./templates";
 
 // §15/§72. The pipeline, and only the pipeline: interpret, gate, dispatch,
@@ -141,6 +144,35 @@ export async function handleEmployeeMessage(input: {
       resumed: true,
     });
     return;
+  }
+
+  // §21 step 7. "done" after sending photos — a fixed word, so it is matched
+  // rather than classified, for the same reason a filled-in form is.
+  //
+  // Only when the thread is already about a property: elsewhere "done" is an
+  // ordinary word and belongs to the model ("mark that follow-up done").
+  if (/^(done|skip|finished|that'?s all|no more)[.!]?$/i.test(text)) {
+    const property = await propertyInThread(input.conversationId);
+    if (property) {
+      const photos = await publicImageCount(property.id);
+      const reply_ = t.photosDone(
+        property.reference ?? property.name,
+        photos,
+        adminPropertyUrl(property.id),
+      );
+      await record({
+        ...input,
+        intent: "GET_PROPERTY",
+        confidence: null,
+        model: "none",
+        entities: {},
+        status: "executed",
+        target: { entity: "property", id: property.id },
+        summary: `${photos} photo(s), preview sent`,
+      });
+      await reply(reply_);
+      return;
+    }
   }
 
   const parsed = await parseIntent({
@@ -346,7 +378,7 @@ async function runBatch(args: {
       actions.some((action) => COMMANDS[action.intent].requiresConfirmation));
 
   if (mustConfirm) {
-    const question = await confirmationQuestion(actions, user);
+    const question = await confirmationQuestion(actions, user, args.conversationId);
     await db().insert(whatsappCommandExecutions).values({
       id: newId(),
       messageId: args.messageId,
@@ -462,7 +494,7 @@ function dispatch(
     case "GET_LEAD":
       return handlers.getLead(ctx, entities);
     case "GET_PROPERTY":
-      return handlers.getProperty(entities, ctx.user);
+      return handlers.getProperty(entities, ctx.user, ctx.conversationId);
     case "CREATE_LEAD":
       return handlers.createLeadCommand(ctx, entities);
     case "UPDATE_LEAD":
@@ -504,17 +536,35 @@ function dispatch(
 async function confirmationQuestion(
   actions: IntentAction[],
   user: SessionUser,
+  conversationId?: string,
 ): Promise<string> {
   if (actions.length > 1) {
-    const lines = await Promise.all(actions.map((a) => oneLine(a, user)));
+    const lines = await Promise.all(
+      actions.map((a) => oneLine(a, user, conversationId)),
+    );
     return `This will:\n${lines.map((line) => `• ${line}`).join("\n")}`;
   }
-  return oneLine(actions[0], user);
+  return oneLine(actions[0], user, conversationId);
 }
 
-async function oneLine(action: IntentAction, user: SessionUser): Promise<string> {
+async function oneLine(
+  action: IntentAction,
+  user: SessionUser,
+  conversationId?: string,
+): Promise<string> {
   const e = action.entities;
-  const target = e.propertyReference ?? e.propertyQuery ?? e.leadName ?? "that record";
+
+  // A confirmation has to name what it is about. With the thread fallback a
+  // bare "publish" carries no reference, and "make that record visible" is not
+  // something anyone can safely say yes to — so the thread's property is
+  // resolved for the wording, exactly as the handler will resolve it.
+  let named = e.propertyReference ?? e.propertyQuery ?? null;
+  if (!named && conversationId) {
+    const inThread = await propertyInThread(conversationId);
+    if (inThread) named = inThread.reference ?? inThread.name;
+  }
+
+  const target = named ?? e.leadName ?? "that record";
 
   switch (action.intent) {
     case "PUBLISH_PROPERTY":
@@ -524,7 +574,7 @@ async function oneLine(action: IntentAction, user: SessionUser): Promise<string>
     case "UPDATE_PROPERTY_PRICE": {
       // §6 wants both figures in the question. Being asked to confirm a change
       // without being shown what it is replacing is not a confirmation.
-      const current = await handlers.currentAskingPrice(e);
+      const current = await handlers.currentAskingPrice(e, conversationId);
       const to = e.amount === undefined ? "the new figure" : inr(e.amount);
       return current === null
         ? `Change the asking price of ${target} to ${to}?`
@@ -602,6 +652,25 @@ async function closePending(id: string, status: "executed" | "cancelled") {
     .update(whatsappCommandExecutions)
     .set({ status, confirmedAt: new Date() })
     .where(eq(whatsappCommandExecutions.id, id));
+}
+
+/**
+ * Public images on a listing — the same thing publishBlockers counts, so the
+ * preview message and the publish gate can never disagree about whether there
+ * is a photo.
+ */
+async function publicImageCount(propertyId: string): Promise<number> {
+  const [row] = await db()
+    .select({ count: sql<number>`count(*)::int` })
+    .from(propertyMedia)
+    .where(
+      and(
+        eq(propertyMedia.propertyId, propertyId),
+        eq(propertyMedia.kind, "image"),
+        eq(propertyMedia.isPublic, true),
+      ),
+    );
+  return row?.count ?? 0;
 }
 
 /** The form a parked command is waiting on, if it is waiting on one. */

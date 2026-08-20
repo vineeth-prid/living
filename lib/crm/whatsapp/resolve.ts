@@ -1,6 +1,6 @@
 import { and, eq, ilike, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { leads, properties } from "@/lib/db/schema";
+import { leads, properties, whatsappConversations } from "@/lib/db/schema";
 import { visibleTo } from "@/lib/leads.admin";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -143,4 +143,44 @@ export async function resolveProperty(query: {
       label: `${row.reference ?? row.id} — ${row.type} in ${row.locality}`,
     })),
   };
+}
+
+/**
+ * The property this conversation is already about.
+ *
+ * Selected by id, deliberately not routed through resolveProperty: that reads
+ * a reference out of trailing digits, so a slug like "villa-2" would resolve
+ * to LIV-0002 — a different listing entirely.
+ *
+ * Used only when a command names no property at all — "publish", after a draft
+ * has just been created and photographed. An explicit reference that fails to
+ * resolve must never fall through to here: "publish LIV-9999" has to be an
+ * error, not a publish of whatever was last discussed.
+ */
+export async function propertyInThread(conversationId: string) {
+  const [row] = await db()
+    .select({
+      id: properties.id,
+      reference: properties.reference,
+      name: properties.name,
+      locality: properties.locality,
+      city: properties.city,
+      type: properties.type,
+      askingPrice: properties.askingPrice,
+      priceLabel: properties.priceLabel,
+      workflowStatus: properties.workflowStatus,
+      isPublic: properties.isPublic,
+      listingType: properties.listingType,
+      summary: properties.summary,
+    })
+    .from(whatsappConversations)
+    .innerJoin(properties, eq(properties.id, whatsappConversations.propertyId))
+    .where(
+      and(
+        eq(whatsappConversations.id, conversationId),
+        isNull(properties.deletedAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }

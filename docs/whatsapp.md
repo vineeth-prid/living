@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 87 assertions covering signature verification
+`npm run check:whatsapp` — 94 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,40 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## Adding a property, end to end
+
+1. "Add a new property" — Living asks residential or commercial.
+2. The matching form goes out; the employee fills it in and sends it back.
+3. The draft is created and the thread is anchored to it.
+4. Photos attach with no reference — the thread already knows the listing.
+5. "done" or "skip" — Living reports the photo count and sends the preview.
+6. "publish" — confirmed, then live.
+
+Steps 5 and 6 are the ones worth knowing about:
+
+**"done" is matched, not classified.** Like a filled-in form, it is a fixed
+word and never reaches the model. It only fires on an exact match and only
+when the thread is already about a property — elsewhere "mark that follow-up
+done" is an ordinary sentence and belongs to the classifier. The reply counts
+public images with the same query `publishBlockers` uses, so the preview and
+the publish gate can never disagree about whether there is a photo.
+
+**"publish" with no reference resolves from the thread.** `needProperty`
+falls back to `whatsapp_conversations.property_id`, but *only* when nothing
+was named at all — an explicit reference that fails to resolve stays an
+error, so "publish LIV-9999" can never publish whatever was last discussed.
+The fallback selects by id rather than going through `resolveProperty`, which
+reads a reference out of trailing digits and would turn the slug "villa-2"
+into LIV-0002.
+
+Because a bare "publish" carries no reference, the confirmation resolves the
+thread's property for its wording too. "Make that record visible" is not
+something anyone can safely say yes to.
+
+**Photos.** The inline payload arrives as `media.data`. The documented
+`base64` spellings are still read, and the envelope's own top-level `data` is
+deliberately not — that is the message body, not an image.
 
 ## What the thread is about
 
