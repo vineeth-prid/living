@@ -180,6 +180,34 @@ inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
 
+## Updating a property
+
+`UPDATE_PROPERTY_PRICE` writes `asking_price`, `price_value` and
+`price_label` together, so the panel and the public card never disagree. It
+is high-risk in the registry, so it is always confirmed whatever the model's
+confidence, and the confirmation names both figures.
+
+**The figure comes from the message, not from the model.** Same rule as dates
+(`scheduleAt`), and for the same reason: arithmetic is the part a model gets
+quietly wrong, and "92 lakh" returned as `92` would put a listing on the site
+at ninety-two rupees with nothing downstream noticing. `amountFrom(text,
+modelAmount)` reads the employee's own words and falls back to the model only
+when the text names no single figure.
+
+What it will not do is guess. Two amounts in one message ("from 85 lakh to 92
+lakh") is a refusal, not a coin toss. A reference is stripped first, so the
+digits in `LIV-0027` are never money, and a bare number needs five digits —
+`1800` is a built-up area.
+
+The confirmation quotes `amountFrom` too. Being asked to agree to one figure
+and having another written is worse than not being asked.
+
+`UPDATE_PROPERTY` covers the allowlisted columns in `PROPERTY_FIELDS` and
+nothing else; possession is checked against the vocabulary the public badge
+renders. The internal final price sits behind `property.final_price` and is
+refused rather than ignored without it — and the figure never enters the
+audit payload, which more people can read than hold the permission.
+
 ## Adding a property, end to end
 
 1. "Add a new property" — Living asks residential or commercial.

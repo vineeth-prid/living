@@ -25,6 +25,7 @@ import {
 import { attachWhatsAppMedia } from "./media";
 import { propertyInThread } from "./resolve";
 import { adminPropertyUrl } from "@/lib/site";
+import { amountFrom } from "@/lib/money";
 import { inr, t } from "./templates";
 
 // §15/§72. The pipeline, and only the pipeline: interpret, gate, dispatch,
@@ -378,7 +379,12 @@ async function runBatch(args: {
       actions.some((action) => COMMANDS[action.intent].requiresConfirmation));
 
   if (mustConfirm) {
-    const question = await confirmationQuestion(actions, user, args.conversationId);
+    const question = await confirmationQuestion(
+      actions,
+      user,
+      args.conversationId,
+      args.text,
+    );
     await db().insert(whatsappCommandExecutions).values({
       id: newId(),
       messageId: args.messageId,
@@ -537,20 +543,23 @@ async function confirmationQuestion(
   actions: IntentAction[],
   user: SessionUser,
   conversationId?: string,
+  /** The message verbatim — the figure is read from it, not from the model. */
+  text?: string,
 ): Promise<string> {
   if (actions.length > 1) {
     const lines = await Promise.all(
-      actions.map((a) => oneLine(a, user, conversationId)),
+      actions.map((a) => oneLine(a, user, conversationId, text)),
     );
     return `This will:\n${lines.map((line) => `• ${line}`).join("\n")}`;
   }
-  return oneLine(actions[0], user, conversationId);
+  return oneLine(actions[0], user, conversationId, text);
 }
 
 async function oneLine(
   action: IntentAction,
   user: SessionUser,
   conversationId?: string,
+  text?: string,
 ): Promise<string> {
   const e = action.entities;
 
@@ -575,7 +584,11 @@ async function oneLine(
       // §6 wants both figures in the question. Being asked to confirm a change
       // without being shown what it is replacing is not a confirmation.
       const current = await handlers.currentAskingPrice(e, conversationId);
-      const to = e.amount === undefined ? "the new figure" : inr(e.amount);
+      // Read the same way the handler will read it. Quoting the model's
+      // number here and writing a different one is worse than not asking:
+      // the employee would be agreeing to a figure that never gets used.
+      const amount = amountFrom(text ?? "", e.amount);
+      const to = amount === null ? "the new figure" : inr(amount);
       return current === null
         ? `Change the asking price of ${target} to ${to}?`
         : `Change ${target} asking price from ${inr(current)} to ${to}?`;

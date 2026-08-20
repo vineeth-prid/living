@@ -101,3 +101,50 @@ export function sumAmounts(values: (number | null | undefined)[]): number {
 /** Convenience for the common "add these up and show it" case. */
 export const formatTotal = (values: (number | null | undefined)[]): string =>
   formatAmount(sumAmounts(values));
+
+/** References carry digits that are not money: "LIV-0027", "PO-14". */
+const REFERENCE = /\b[A-Za-z]{2,}-\d+\b/g;
+
+/**
+ * A number followed by a unit, or a plain figure large enough to be a price.
+ *
+ * The unit or the magnitude is what makes it a candidate: "3" in "3 BHK" is
+ * not an amount, and reading it as one is how a listing ends up at three
+ * rupees. A bare number needs five digits — "1800" is a built-up area, and
+ * no property here is priced under ten thousand rupees.
+ */
+const AMOUNT_PHRASE =
+  /(?:₹\s*)?\d[\d,]*(?:\.\d+)?\s*(?:crores?|cr|lakhs?|lacs?|l|thousands?|k)\b|₹\s*\d[\d,]*(?:\.\d+)?|\b\d{5,}(?:\.\d+)?\b/gi;
+
+/**
+ * The amount named in a sentence, or null if there isn't exactly one.
+ *
+ * Ambiguity is refused rather than resolved: two figures in one message means
+ * we cannot tell which is the price, and guessing wrong writes a real number
+ * onto a real listing.
+ */
+export function amountInText(text: string): number | null {
+  const cleaned = (text ?? "").replace(REFERENCE, " ");
+  const matches = cleaned.match(AMOUNT_PHRASE);
+  if (!matches || matches.length !== 1) return null;
+  return parseAmount(matches[0]);
+}
+
+/**
+ * The amount to act on: the employee's own words first, the model's number
+ * only as a fallback.
+ *
+ * Same precedent as dates, and for the same reason — arithmetic is the part a
+ * model gets quietly wrong. "92 lakh" coming back as 92 would set a listing to
+ * ninety-two rupees, and nothing downstream would notice.
+ */
+export function amountFrom(
+  text: string,
+  modelAmount?: number | null,
+): number | null {
+  const fromText = amountInText(text);
+  if (fromText !== null) return fromText;
+  return typeof modelAmount === "number" && Number.isFinite(modelAmount)
+    ? Math.round(modelAmount)
+    : null;
+}

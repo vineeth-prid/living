@@ -27,6 +27,7 @@ import { visibleTo } from "@/lib/leads.admin";
 import { can } from "@/lib/auth/dal";
 import { PERMISSIONS } from "@/lib/auth/constants";
 import { priceLabelFor, publishBlockers } from "@/lib/validation/property";
+import { amountFrom } from "@/lib/money";
 import type { SessionUser } from "@/lib/auth/session";
 import type { Entities } from "@/lib/ai/crm-intent/schema";
 import {
@@ -446,16 +447,21 @@ export async function updatePropertyPrice(
 ): Promise<HandlerResult> {
   const found = await needProperty(e, ctx.conversationId);
   if (!found.ok) return no(found.fail);
-  if (e.amount === undefined) return no("What should the new asking price be?");
+
+  // §7's rule, applied to money. The employee's own words decide the figure;
+  // the model's number is only a fallback. "92 lakh" coming back as 92 would
+  // put a listing on the site at ninety-two rupees.
+  const amount = amountFrom(ctx.text, e.amount);
+  if (amount === null) return no("What should the new asking price be?");
 
   const before = found.value.askingPrice;
-  const label = priceLabelFor(e.amount) ?? "On request";
+  const label = priceLabelFor(amount) ?? "On request";
 
   await db()
     .update(properties)
     .set({
-      askingPrice: e.amount,
-      priceValue: e.amount,
+      askingPrice: amount,
+      priceValue: amount,
       priceLabel: label,
       updatedById: ctx.user.id,
       updatedAt: sql`now()`,
@@ -468,7 +474,7 @@ export async function updatePropertyPrice(
     entity: "property",
     entityId: found.value.id,
     before: { askingPrice: before },
-    after: { askingPrice: e.amount, channel: "whatsapp" },
+    after: { askingPrice: amount, channel: "whatsapp" },
   });
 
   return ok(
@@ -804,12 +810,13 @@ export async function updatePropertyField(
   // Refused rather than ignored, so nobody believes they changed it.
   if (/^(final|internal)\s*price$/.test(key)) {
     if (!can(ctx.user, PERMISSIONS.propertyFinalPrice)) return no(t.notPermitted());
-    if (e.amount === undefined) return needs("What should the final price be?", e);
+    const finalAmount = amountFrom(ctx.text, e.amount);
+    if (finalAmount === null) return needs("What should the final price be?", e);
 
     await db()
       .update(properties)
       .set({
-        finalPrice: e.amount,
+        finalPrice: finalAmount,
         updatedById: ctx.user.id,
         updatedAt: sql`now()`,
       })

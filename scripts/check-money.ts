@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import {
   CRORE,
   LAKH,
+  amountFrom,
+  amountInText,
   formatAmount,
   formatPrice,
   formatTotal,
@@ -165,6 +167,64 @@ check("an instagram link is accepted with or without a scheme", () => {
 
   const junk = propertySchema.safeParse({ ...base, askingPrice: "85L", instagramUrl: "not a link" });
   assert.ok(!junk.success, "plain prose is not a link");
+});
+
+
+check("a price is read from the message, not the model's arithmetic", () => {
+  // Same precedent as dates: the model is an interpreter, and arithmetic is
+  // the part it gets quietly wrong. A "92 lakh" that comes back as 92 would
+  // put a live listing on the site at ninety-two rupees.
+  assert.equal(amountFrom("Change LIV-0009 asking price to 92 lakh", 92), 9_200_000);
+  assert.equal(amountFrom("Change LIV-0027 asking price to 1.75 crore", 1.75), 17_500_000);
+  assert.equal(amountFrom("set LIV-0009 price to 8500000", 85), 8_500_000);
+  assert.equal(amountFrom("price to ₹92,00,000", null), 9_200_000);
+});
+
+check("a reference is not mistaken for a price", () => {
+  // LIV-0027 is four digits sitting right next to the word "price".
+  assert.equal(amountFrom("Change LIV-0027 asking price to 85 lakh", null), 8_500_000);
+  // And with nothing else in the message, there is no amount at all.
+  assert.equal(amountInText("Get property LIV-0027"), null);
+});
+
+check("a measurement is not mistaken for a price", () => {
+  // "1800" is a built-up area. Reading it as rupees is the same class of
+  // error as reading a masked sender id as a phone number.
+  assert.equal(amountInText("built-up area 1800 sqft"), null);
+  assert.equal(amountInText("3 BHK, 2 baths"), null);
+  // But a real figure in the same sentence is still found.
+  assert.equal(amountInText("12 cents and 1800 sqft, asking 1.8 crore"), 18_000_000);
+});
+
+check("two figures in one message is a refusal, not a guess", () => {
+  // Which one is the price? Guessing writes a real number onto a real listing.
+  assert.equal(amountInText("change from 85 lakh to 92 lakh"), null);
+  // The model's number is then the fallback, as it was before.
+  assert.equal(amountFrom("change from 85 lakh to 92 lakh", 9_200_000), 9_200_000);
+});
+
+check("no figure anywhere falls back to the model", () => {
+  assert.equal(amountFrom("change the price", 9_200_000), 9_200_000);
+  assert.equal(amountFrom("change the price", null), null);
+  assert.equal(amountFrom("change the price", undefined), null);
+});
+
+check("the confirmation and the write read the figure the same way", () => {
+  // employee.ts quotes amountFrom(text, e.amount) and handlers.ts writes
+  // amountFrom(ctx.text, e.amount). Being asked to agree to one figure and
+  // getting another is worse than not being asked at all.
+  const text = "Change LIV-0009 asking price to 92 lakh";
+  const modelGotItWrong = 92;
+  const quoted = amountFrom(text, modelGotItWrong);
+  const written = amountFrom(text, modelGotItWrong);
+  assert.equal(quoted, written);
+  assert.equal(quoted, 9_200_000, "and both are the employee's figure");
+});
+
+check("the new price is shown in the shorthand", () => {
+  // What the confirmation and the receipt both render.
+  assert.equal(priceLabelFor(9_200_000), "₹92L");
+  assert.equal(priceLabelFor(17_500_000), "₹1.75Cr");
 });
 
 console.log(`\n${checks} checks passed`);
