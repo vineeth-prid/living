@@ -86,6 +86,16 @@ export const nav = [
 
 export type NavItem = (typeof nav)[number];
 
+/**
+ * Where staff review a listing that is not on the website.
+ *
+ * Deliberately an admin path: a draft has no public URL and must not be given
+ * one. Anything under /admin is behind the session check, so a link that
+ * leaks goes to a login screen rather than to an unpublished listing.
+ */
+export const adminPropertyUrl = (id: string) =>
+  `${site.url}/admin/properties/${id}`;
+
 export const waLink = (msg?: string) =>
   `https://wa.me/${site.whatsapp}${msg ? `?text=${encodeURIComponent(msg)}` : ""}`;
 export const telLink = `tel:${site.phoneRaw}`;

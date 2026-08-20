@@ -663,7 +663,7 @@ async function main() {
       type: "3 BHK",
       locality: "Kakkanad",
       city: "Ernakulam",
-      priceLabel: "₹1.85 Cr",
+      priceLabel: "₹1.85Cr",
       workflowStatus: "published",
       isPublic: true,
     };
@@ -677,9 +677,9 @@ async function main() {
 
     // Permission → the caller fetched it → it renders.
     const shown = t.property(listing, 17000000);
-    assert.match(shown, /Final \(internal\): ₹1\.70 Cr/);
+    assert.match(shown, /Final \(internal\): ₹1\.7Cr/);
     // The asking price is still there; one did not replace the other.
-    assert.match(shown, /Asking: ₹1\.85 Cr/);
+    assert.match(shown, /Asking: ₹1\.85Cr/);
   });
 
   check("Sprint 6 §8: the internal price is not in the resolver's projection", async () => {

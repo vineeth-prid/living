@@ -4,6 +4,7 @@ import { properties, AREA_UNITS } from "@/lib/db/schema";
 import { nextReference, slugify } from "@/lib/ids";
 import { audit } from "@/lib/audit";
 import { latestPropertyReference } from "@/lib/properties.admin";
+import { adminPropertyUrl } from "@/lib/site";
 import { priceLabelFor, propertySchema, seoFor } from "@/lib/validation/property";
 import type { Entities } from "@/lib/ai/crm-intent/schema";
 import type { HandlerContext, HandlerResult } from "./handlers";
@@ -151,6 +152,7 @@ async function commitDraft(
     units: e.units === undefined ? "" : String(e.units),
     rentalIncome: e.rentalIncome === undefined ? "" : String(e.rentalIncome),
     description: e.description ?? "",
+    instagramUrl: e.instagramUrl ?? "",
     // A building only exists if an area for it was given (§22) — the schema
     // demands a built-up area whenever this is on.
     ...(e.builtUpArea !== undefined ? { hasBuilding: "on" } : {}),
@@ -208,6 +210,7 @@ async function commitDraft(
     builtUpArea: input.builtUpArea ?? null,
     builtUpAreaUnit: input.builtUpAreaUnit,
     commercialKind: input.commercialKind,
+    instagramUrl: input.instagramUrl ?? null,
     seoTitle: seo.seoTitle,
     seoDescription: seo.seoDescription,
     // §21 + Rule 1: created is never published, and never from a phone.
@@ -227,7 +230,7 @@ async function commitDraft(
 
   return {
     ok: true,
-    reply: t.draftCreated(reference, input.name),
+    reply: t.draftCreated(reference, input.name, adminPropertyUrl(id)),
     target: { entity: "property", id },
     summary: `draft ${reference}`,
   };

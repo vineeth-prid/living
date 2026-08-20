@@ -11,6 +11,7 @@
 // "85 lakh", "1.8 Cr", "1,85,00,000", "12 cents" — and an unreadable value
 // fails as one named field, never as the whole reply.
 
+import { parseAmount } from "@/lib/money";
 import {
   AREA_UNITS,
   COMMERCIAL_KINDS,
@@ -120,36 +121,11 @@ function closest(input: string, candidates: readonly string[]): string | null {
 
 // --- value normalisers ----------------------------------------------------
 
-const MULTIPLIERS: [RegExp, number][] = [
-  [/(crores?|cr)\b/i, 10_000_000],
-  [/(lakhs?|lacs?|lakhs|l)\b/i, 100_000],
-  [/(thousands?|k)\b/i, 1_000],
-];
-
 /**
- * Money as it is actually written here: "85 lakh", "1.8 Cr", "1,85,00,000",
- * "8500000". Indian digit grouping is not thousands grouping, so separators
- * are stripped rather than interpreted.
+ * Money lives in lib/money.ts: the admin form, the CRM and this form all have
+ * to read "85L" the same way, and two parsers would drift.
  */
-export function parseMoney(input: string): number | null {
-  const text = input.trim();
-  if (!text) return null;
-
-  const digits = text.replace(/[₹,\s]/g, "");
-  const numeric = digits.match(/^-?\d+(\.\d+)?/);
-  if (!numeric) return null;
-
-  const value = Number(numeric[0]);
-  if (!Number.isFinite(value) || value < 0) return null;
-
-  // Tested against the text with the digits removed, so the "l" in a bare
-  // "8500000" cannot be read as lakhs.
-  const suffix = text.replace(/^[^a-zA-Z]*/, "");
-  for (const [pattern, multiplier] of MULTIPLIERS) {
-    if (pattern.test(suffix)) return Math.round(value * multiplier);
-  }
-  return Math.round(value);
-}
+export const parseMoney = (input: string): number | null => parseAmount(input);
 
 const UNIT_WORDS: Record<string, (typeof AREA_UNITS)[number]> = {
   cent: "cent",
@@ -422,6 +398,13 @@ export const PROPERTY_KIND_FORM: IntakeForm = {
   ],
 };
 
+const instagram: IntakeField = {
+  key: "instagramUrl",
+  label: "Instagram",
+  hint: "link to the reel or post — leave blank if none",
+  kind: "text",
+};
+
 export const RESIDENTIAL_FORM: IntakeForm = {
   id: "property.residential",
   intro: INTRO,
@@ -430,6 +413,7 @@ export const RESIDENTIAL_FORM: IntakeForm = {
     { key: "beds", label: "Bedrooms", kind: "int" },
     { key: "baths", label: "Bathrooms", kind: "int" },
     ...areas,
+    instagram,
   ],
 };
 
@@ -447,6 +431,7 @@ export const COMMERCIAL_FORM: IntakeForm = {
       required: true,
     },
     ...areas,
+    instagram,
   ],
 };
 

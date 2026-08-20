@@ -31,6 +31,7 @@ const STEPS = [
  */
 const STEP_OF: Record<string, number> = {
   name: 0, kind: 0, listingType: 0, type: 0, status: 0, summary: 0, description: 0,
+  instagramUrl: 0,
   locality: 1, city: 1, addressLine: 1, addressIsPublic: 1, district: 1, state: 1,
   pincode: 1, country: 1, latitude: 1, longitude: 1,
   landArea: 2, landAreaUnit: 2, surveyNumber: 2, roadAccess: 2, facing: 2,
@@ -201,6 +202,15 @@ export function PropertyForm({
 
             <Field label="Summary" required error={errors?.summary?.[0]} className="sm:col-span-2" hint="One or two lines — this is the card copy.">
               <textarea name="summary" rows={2} defaultValue={val("summary")} className={cx(inputClass, "resize-y")} />
+            </Field>
+
+            <Field label="Instagram link" className="sm:col-span-2">
+              <input
+                name="instagramUrl"
+                defaultValue={val("instagramUrl")}
+                className={inputClass}
+                placeholder="instagram.com/p/..."
+              />
             </Field>
 
             <Field label="Full description" className="sm:col-span-2">

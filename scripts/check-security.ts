@@ -205,8 +205,8 @@ async function main() {
 
   // --- price labels ---------------------------------------------------------
   await check("price labels format to Indian units", () => {
-    assert.equal(priceLabelFor(18500000), "₹1.85 Cr");
-    assert.equal(priceLabelFor(9800000), "₹98 L");
+    assert.equal(priceLabelFor(18500000), "₹1.85Cr");
+    assert.equal(priceLabelFor(9800000), "₹98L");
     assert.equal(priceLabelFor(0), undefined);
     assert.equal(priceLabelFor(undefined), undefined);
   });

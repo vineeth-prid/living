@@ -97,6 +97,8 @@ const entityFields = z
     propertyKind: z.string().trim().min(1).optional(),
     /** Which sort of commercial property — office, retail, warehouse, ... */
     commercialKind: z.string().trim().min(1).optional(),
+    /** A reel or post for the listing. */
+    instagramUrl: z.string().trim().min(1).optional(),
     /** The configuration line: "3 BHK villa", "2000 sqft office space". */
     configuration: z.string().trim().min(1).optional(),
     landArea: z.number().nonnegative().optional(),

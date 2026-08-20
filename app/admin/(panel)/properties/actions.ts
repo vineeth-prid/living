@@ -165,6 +165,7 @@ export async function createProperty(
       commercialKind: input.commercialKind,
       floorNumber: input.floorNumber,
       occupancy: input.occupancy,
+      instagramUrl: input.instagramUrl,
       suitableFor: input.suitableFor,
       leasePotential: input.leasePotential,
 
@@ -290,6 +291,7 @@ export async function updateProperty(
       commercialKind: input.commercialKind,
       floorNumber: input.floorNumber,
       occupancy: input.occupancy,
+      instagramUrl: input.instagramUrl,
       suitableFor: input.suitableFor,
       leasePotential: input.leasePotential,
 

@@ -197,7 +197,7 @@ function main() {
     assert.ok(seo.seoTitle.length <= 60, `title too long: ${seo.seoTitle}`);
     assert.ok(seo.seoDescription.length <= 155, "description over 155 chars");
     assert.match(seo.seoTitle, /Arbour/);
-    assert.match(seo.seoDescription, /₹1\.85 Cr/);
+    assert.match(seo.seoDescription, /₹1\.85Cr/);
 
     const rental = seoFor({ ...MINIMAL, listingType: "rental" });
     assert.match(rental.seoTitle, /for rent/);

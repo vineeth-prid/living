@@ -1,4 +1,5 @@
 import { CRM_TIMEZONE } from "@/lib/integrations/whatsapp/config";
+import { formatPrice } from "@/lib/money";
 
 // §38. Every outbound wording, in one file. Short, because these are read on a
 // phone, and plain, because a CRM confirmation is not marketing copy.
@@ -180,8 +181,15 @@ export const t = {
       "Send just those again.",
     ].join("\n"),
 
-  draftCreated: (reference: string, name: string) =>
-    `✅ Draft created — ${reference}, ${name}.\n\nIt is *not* on the website. Send photos now — they attach to this draft — then *publish ${reference}* when it's ready.`,
+  draftCreated: (reference: string, name: string, reviewUrl: string) =>
+    [
+      `✅ Draft created — ${reference}, ${name}.`,
+      "",
+      "It is *not* on the website. Review it here (staff login required):",
+      reviewUrl,
+      "",
+      `Send photos now — they attach to this draft — then *publish ${reference}* when it's ready.`,
+    ].join("\n"),
 
   profile: (name: string, role: string) =>
     `${name} — ${role === "admin" ? "Administrator" : "Employee"}.`,
@@ -196,13 +204,9 @@ export const t = {
       : "Thanks for getting in touch with Living. Our team will get in touch with you shortly.",
 };
 
-/** Rupees, compact. Same convention as the panel's `inr`. */
-export function inr(value: number | null | undefined): string {
-  if (!value) return "—";
-  if (value >= 10000000) return `₹${(value / 10000000).toFixed(2).replace(/\.00$/, "")} Cr`;
-  if (value >= 100000) return `₹${(value / 100000).toFixed(1).replace(/\.0$/, "")} L`;
-  return `₹${value.toLocaleString("en-IN")}`;
-}
+/** Rupees, in the shorthand the panel and the website both use: "85L". */
+export const inr = (value: number | null | undefined): string =>
+  formatPrice(value) || "—";
 
 /** Always rendered in Living's timezone, never the server's. */
 export function dateTime(value: Date): string {

@@ -287,6 +287,8 @@ export const properties = pgTable(
     commercialKind: text("commercial_kind"),
     floorNumber: text("floor_number"),
     occupancy: text("occupancy"),
+    /** Public: a reel or post for the listing. Marketing, not a document. */
+    instagramUrl: text("instagram_url"),
     suitableFor: text("suitable_for"),
     leasePotential: text("lease_potential"),
 
