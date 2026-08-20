@@ -169,8 +169,19 @@ export const t = {
   publishBlocked: (property: string, reasons: string[]) =>
     [`I can't publish ${property} yet:`, ...reasons.map((r) => `• ${r}`)].join("\n"),
 
+  /** Named lines that were filled in but could not be read. */
+  unreadableFields: (fields: { label: string; given: string }[]) =>
+    [
+      fields.length === 1
+        ? "I couldn't read one line:"
+        : `I couldn't read ${fields.length} lines:`,
+      ...fields.map((f) => `• ${f.label}: "${f.given}"`),
+      "",
+      "Send just those again.",
+    ].join("\n"),
+
   draftCreated: (reference: string, name: string) =>
-    `✅ Draft created — ${reference}, ${name}.\n\nIt is *not* on the website. Add photos and publish it from the panel, or send *publish ${reference}* when it's ready.`,
+    `✅ Draft created — ${reference}, ${name}.\n\nIt is *not* on the website. Send photos now — they attach to this draft — then *publish ${reference}* when it's ready.`,
 
   profile: (name: string, role: string) =>
     `${name} — ${role === "admin" ? "Administrator" : "Employee"}.`,

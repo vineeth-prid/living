@@ -29,6 +29,13 @@ import { PERMISSIONS } from "@/lib/auth/constants";
 import { priceLabelFor, publishBlockers } from "@/lib/validation/property";
 import type { SessionUser } from "@/lib/auth/session";
 import type { Entities } from "@/lib/ai/crm-intent/schema";
+import {
+  LEAD_FORM,
+  missingRequired,
+  reaskFor,
+  renderForm,
+  type IntakeState,
+} from "./intake";
 import type { LeadStatus } from "@/lib/db/schema";
 import { resolveLead, resolveProperty } from "./resolve";
 import { helpFor } from "./registry";
@@ -665,8 +672,26 @@ export async function createLeadCommand(
   const name = e.leadName?.trim();
   const mobile = e.mobile?.replace(/\D/g, "");
 
-  if (!name) return needs("What's their name?", e);
-  if (!mobile || mobile.length < 10) return needs(`What's ${name}'s mobile number?`, e);
+  // Same template intake as the property draft, for the same reason: two
+  // questions in two messages, each re-interpreted by the classifier, is worse
+  // than one form — and the form collects the optional fields that the
+  // question loop simply never asked for.
+  //
+  // A message that already carries a name and a number skips it entirely, so
+  // "Add lead Raj 9876543210" is still one message in, one lead out.
+  if (!name || !mobile || mobile.length < 10) {
+    const state = e as Entities & IntakeState;
+    const missing = missingRequired(LEAD_FORM, e as Record<string, unknown>);
+    const question = state.__formSent ? reaskFor(missing) : renderForm(LEAD_FORM);
+    return {
+      ok: true,
+      reply: question,
+      needs: {
+        question,
+        entities: { ...e, __intake: LEAD_FORM.id, __formSent: true },
+      },
+    };
+  }
 
   // §30 duplicate rule, reused rather than re-implemented: createLead runs
   // findDuplicateLeads itself, so a WhatsApp-created lead is checked exactly as

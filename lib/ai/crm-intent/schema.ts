@@ -95,6 +95,10 @@ const entityFields = z
     city: z.string().trim().min(1).optional(),
     locality: z.string().trim().min(1).optional(),
     propertyKind: z.string().trim().min(1).optional(),
+    /** Which sort of commercial property — office, retail, warehouse, ... */
+    commercialKind: z.string().trim().min(1).optional(),
+    /** The configuration line: "3 BHK villa", "2000 sqft office space". */
+    configuration: z.string().trim().min(1).optional(),
     landArea: z.number().nonnegative().optional(),
     landAreaUnit: z.string().trim().min(1).optional(),
     title: z.string().trim().min(1).optional(),

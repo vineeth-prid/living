@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 68 assertions covering signature verification
+`npm run check:whatsapp` — 84 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,51 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## Template intake
+
+Multi-field commands ask once, with a form, instead of one question per
+message.
+
+The loop this replaces put every individual answer through the 25-intent
+classifier, so a single typo ("Redeidential") derailed the whole sequence.
+It also under-collected against `propertySchema`: it never asked for
+`listingType`, `status` or `commercialKind`, and hardcoded all three
+regardless of what was true.
+
+The flow for a property:
+
+1. "Add a new property" — Living asks the one question everything branches
+   on: residential or commercial.
+2. The matching form goes out, one line per field.
+3. The employee fills it in and sends it back as one message.
+4. Living parses it, validates through `propertySchema` — the same schema the
+   web form uses — and creates the draft.
+
+`lib/crm/whatsapp/intake.ts` holds the engine and the forms. Parsing is
+label-anchored and **never calls the model**: that is what stops a typo in a
+value being reinterpreted as a different intent. `employee.ts` routes a form
+reply above `parseIntent` for the same reason.
+
+What it tolerates: blank lines, lines returned with the hint still on them,
+mistyped labels ("Bult-up area"), enum values spelled wrong, prose either
+side, and a bare answer with no label at all on a one-field form. Values are
+normalised deterministically — "85 lakh", "1.8 Cr", "90L", "1,85,00,000",
+"12 cents" — so no model round trip is involved in reading them.
+
+A value that cannot be read fails as one named field, and Living asks for
+just that line. Required fields left blank are re-asked the same way: never a
+full resend.
+
+A message that already carries everything skips the form entirely, so
+"Add lead Raj 9876543210" is still one message in, one lead out.
+
+State lives on the parked `whatsapp_command_executions` row as `__intake`
+(which form) and `__formSent` (so a re-ask can be partial), underscored like
+the `batch` envelope a confirmation carries.
+
+`CREATE_LEAD` uses the same mechanism. Anything with more than a couple of
+required fields belongs here rather than in a question loop.
 
 ## Blank fields from the model
 

@@ -7,6 +7,15 @@ import { latestPropertyReference } from "@/lib/properties.admin";
 import { priceLabelFor, propertySchema, seoFor } from "@/lib/validation/property";
 import type { Entities } from "@/lib/ai/crm-intent/schema";
 import type { HandlerContext, HandlerResult } from "./handlers";
+import {
+  COMMERCIAL_FORM,
+  PROPERTY_KIND_FORM,
+  RESIDENTIAL_FORM,
+  missingRequired,
+  reaskFor,
+  renderForm,
+  type IntakeState,
+} from "./intake";
 import { t } from "./templates";
 
 // §21/§22. Building a listing across several messages.
@@ -15,25 +24,6 @@ import { t } from "./templates";
 // has not given is asked for, one question at a time, and the draft is not
 // written until the answers add up to something propertySchema accepts. The
 // same schema the web form uses — a draft made here is a draft made there.
-
-/**
- * §2. The minimum, asked one field at a time and only where it is missing.
- *
- * Each entry can be satisfied by any of its keys, which is how "how big is it?"
- * stays a single question: a land area answers it and so does a built-up area.
- * Asking for both would be asking for one that does not apply.
- */
-const REQUIRED: { keys: (keyof Entities)[]; question: string }[] = [
-  { keys: ["propertyKind"], question: "Is it residential or commercial?" },
-  { keys: ["locality"], question: "Which area or locality is it in?" },
-  { keys: ["city"], question: "Which city?" },
-  {
-    keys: ["landArea", "builtUpArea"],
-    question:
-      "How big is it? Give me the land area (for example 12 cents) or the built-up area (for example 1840 sqft).",
-  },
-  { keys: ["amount"], question: "What's the asking price?" },
-];
 
 const AREA_UNIT_WORDS: Record<string, (typeof AREA_UNITS)[number]> = {
   cent: "cent",
@@ -46,51 +36,68 @@ const AREA_UNIT_WORDS: Record<string, (typeof AREA_UNITS)[number]> = {
   "sq m": "sqm",
 };
 
+const kindOf = (value: unknown): "residential" | "commercial" | null => {
+  const text = String(value ?? "").toLowerCase();
+  if (text.startsWith("comm")) return "commercial";
+  if (text.startsWith("resi")) return "residential";
+  return null;
+};
+
 /**
- * Starts or continues a draft. Both directions land here: the pipeline stores
- * whatever entities came back and re-enters with them merged, so "Add a new
- * property" and "OMR Chennai, 12 cents, 1.8 crore" are the same code path.
+ * Starts or continues a draft.
+ *
+ * One branching question, then one form. The old shape asked for each field in
+ * its own message and put every answer through the intent classifier, so a
+ * typo in any single reply derailed the sequence — and it never asked for
+ * listingType, status or commercialKind at all, hardcoding all three instead.
+ *
+ * A message that already carries everything still commits straight away: the
+ * form is what happens when something is missing, not a toll on every route.
  */
 export async function startDraft(
   ctx: HandlerContext,
-  entities: Entities,
+  entities: Entities & IntakeState,
 ): Promise<HandlerResult> {
-  const missing = REQUIRED.find((field) =>
-    field.keys.every((key) => entities[key] === undefined),
-  );
+  const kind = kindOf(entities.propertyKind);
 
-  if (missing) {
-    // One question at a time. A form disguised as a message gets ignored.
+  // Everything else branches on this, so it is asked on its own.
+  if (!kind) {
     return {
       ok: true,
-      reply:
-        Object.keys(entities).length === 0
-          ? `Sure — I'll create a draft. ${missing.question}`
-          : missing.question,
-      needs: { question: missing.question, entities },
+      reply: PROPERTY_KIND_FORM.intro,
+      needs: {
+        question: PROPERTY_KIND_FORM.intro,
+        entities: { ...entities, __intake: PROPERTY_KIND_FORM.id },
+      },
     };
   }
 
-  if (entities.landArea !== undefined && !entities.landAreaUnit) {
-    const question = "What unit is that — cents, acres, sq ft or sq m?";
-    return {
-      ok: true,
-      reply: question,
-      needs: { question, entities },
-    };
-  }
+  const form = kind === "commercial" ? COMMERCIAL_FORM : RESIDENTIAL_FORM;
+  const missing = missingRequired(form, entities as Record<string, unknown>);
 
-  return commitDraft(ctx, entities);
+  if (missing.length === 0) return commitDraft(ctx, entities, kind);
+
+  // Only what is outstanding — a full resend to fix one blank line is exactly
+  // the back-and-forth this replaces.
+  const question = entities.__formSent
+    ? reaskFor(missing)
+    : renderForm(form);
+
+  return {
+    ok: true,
+    reply: question,
+    needs: {
+      question,
+      entities: { ...entities, __intake: form.id, __formSent: true },
+    },
+  };
 }
 
 async function commitDraft(
   ctx: HandlerContext,
   e: Entities,
+  kind: "residential" | "commercial",
 ): Promise<HandlerResult> {
-  const kind = String(e.propertyKind).toLowerCase().startsWith("comm")
-    ? "commercial"
-    : "residential";
-
   // Composed from what was actually said, never from nothing: "12 cent
   // residential land" is the employee's own words rearranged.
   const areaPhrase =
@@ -100,12 +107,15 @@ async function commitDraft(
         ? `${e.builtUpArea} sqft`
         : null;
 
+  // The configuration line is the employee's own description of the shape of
+  // the thing, so it is the type when there is one.
   const type =
-    e.title && e.summary
+    e.configuration ??
+    (e.title && e.summary
       ? e.title
       : [areaPhrase, kind, e.beds ? `${e.beds} BHK` : null]
           .filter(Boolean)
-          .join(" ") || `${kind} property`;
+          .join(" ") || `${kind} property`);
 
   const name = e.title ?? `${type} in ${e.locality}`;
   const summary =
@@ -124,8 +134,11 @@ async function commitDraft(
     summary: summary.length >= 10 ? summary : `${summary} Enquiries welcome.`,
     type,
     kind,
+    // Asked for now, rather than assumed. The old flow hardcoded all three of
+    // these regardless of what was true, which is exactly the kind of quiet
+    // wrong answer the "never invent a value" rule exists to stop.
     listingType: e.listingType ?? "sale",
-    status: "Ready to move",
+    status: e.status ?? "Ready to move",
     locality: e.locality,
     city: e.city,
     askingPrice: String(e.amount ?? ""),
@@ -141,7 +154,9 @@ async function commitDraft(
     // A building only exists if an area for it was given (§22) — the schema
     // demands a built-up area whenever this is on.
     ...(e.builtUpArea !== undefined ? { hasBuilding: "on" } : {}),
-    ...(kind === "commercial" ? { commercialKind: "other" } : {}),
+    ...(kind === "commercial"
+      ? { commercialKind: e.commercialKind ?? "other" }
+      : {}),
     amenities: [],
   });
 

@@ -34,6 +34,19 @@ import { resolveRelativeDate, scheduleAt } from "../lib/crm/whatsapp/dates";
 import { kindFor } from "../lib/crm/whatsapp/media";
 import { t } from "../lib/crm/whatsapp/templates";
 import { systemHealth } from "../lib/health";
+import {
+  COMMERCIAL_FORM,
+  LEAD_FORM,
+  PROPERTY_KIND_FORM,
+  RESIDENTIAL_FORM,
+  formById,
+  missingRequired,
+  parseArea,
+  parseForm,
+  parseMoney,
+  reaskFor,
+  renderForm,
+} from "../lib/crm/whatsapp/intake";
 import { openWA } from "../lib/integrations/whatsapp/openwa/client";
 import {
   __resetLidCache,
@@ -1075,6 +1088,271 @@ async function main() {
       const parsed = parseIntentJson(JSON.stringify(payload));
       assert.ok("error" in parsed, `should have been refused: ${JSON.stringify(payload).slice(0, 60)}`);
     }
+  });
+
+  // --- template intake ------------------------------------------------------
+  //
+  // Replaces a question-at-a-time loop in which every answer went through the
+  // 25-intent classifier, so one typo ("Redeidential") derailed the sequence.
+  // Parsing here is label-anchored and never calls the model.
+
+  check("the branching question takes a bare answer, typo and all", () => {
+    for (const [given, expected] of [
+      ["residential", "residential"],
+      ["Residential", "residential"],
+      ["commercial", "commercial"],
+      ["COMMERCIAL", "commercial"],
+      // The exact spelling that broke the old flow.
+      ["Redeidential", "residential"],
+      ["comercial", "commercial"],
+      ["resi", "residential"],
+      ["Type: residential", "residential"],
+    ] as const) {
+      const { values } = parseForm(PROPERTY_KIND_FORM, given);
+      assert.equal(values.propertyKind, expected, `"${given}"`);
+    }
+  });
+
+  check("nonsense is refused rather than guessed at", () => {
+    const { values, unreadable } = parseForm(PROPERTY_KIND_FORM, "a blue whale");
+    assert.equal(values.propertyKind, undefined, "must not pick one at random");
+    assert.equal(unreadable.length, 1);
+  });
+
+  check("the residential form is the specified one", () => {
+    const rendered = renderForm(RESIDENTIAL_FORM);
+    for (const line of [
+      "Listing type: sale, rental, or both",
+      "Locality:",
+      "City:",
+      "Configuration: e.g. 3 BHK villa",
+      "Status: ready to move / under construction / new launch",
+      "Price: required unless rental only",
+      "Bedrooms:",
+      "Bathrooms:",
+      "Land area: e.g. 12 cents — leave blank if none",
+      "Built-up area: e.g. 1800 sqft — required if there's a building",
+    ]) {
+      assert.ok(rendered.includes(line), `missing line: ${line}`);
+    }
+    assert.ok(!rendered.includes("Commercial type"), "residential has no commercial type");
+  });
+
+  check("the commercial form swaps bedrooms for commercial type", () => {
+    const rendered = renderForm(COMMERCIAL_FORM);
+    assert.ok(
+      rendered.includes("Commercial type: office, retail, warehouse, land, building, or other"),
+      "commercial type line",
+    );
+    assert.ok(!rendered.includes("Bedrooms:"), "no bedrooms on a commercial form");
+    assert.ok(!rendered.includes("Bathrooms:"), "no bathrooms on a commercial form");
+  });
+
+  check("a filled residential form is read whole", () => {
+    const { values, unreadable } = parseForm(
+      RESIDENTIAL_FORM,
+      [
+        "Listing type: sale",
+        "Locality: Kakkanad",
+        "City: Kochi",
+        "Configuration: 3 BHK villa",
+        "Status: ready to move",
+        "Price: 85 lakh",
+        "Bedrooms: 3",
+        "Bathrooms: 2",
+        "Land area: 12 cents",
+        "Built-up area: 1800 sqft",
+      ].join("\n"),
+    );
+
+    assert.deepEqual(unreadable, [], "nothing should be unreadable");
+    assert.equal(values.listingType, "sale");
+    assert.equal(values.locality, "Kakkanad");
+    assert.equal(values.city, "Kochi");
+    assert.equal(values.configuration, "3 BHK villa");
+    // The exact enum string propertySchema wants, not the lowercase input.
+    assert.equal(values.status, "Ready to move");
+    assert.equal(values.amount, 8_500_000);
+    assert.equal(values.beds, 3);
+    assert.equal(values.baths, 2);
+    assert.equal(values.landArea, 12);
+    assert.equal(values.landAreaUnit, "cent");
+    assert.equal(values.builtUpArea, 1800);
+    assert.equal(missingRequired(RESIDENTIAL_FORM, values).length, 0);
+  });
+
+  check("a filled commercial form captures the commercial kind", () => {
+    const { values } = parseForm(
+      COMMERCIAL_FORM,
+      [
+        "Listing type: both",
+        "Locality: Palarivattom",
+        "City: Kochi",
+        "Configuration: 2000 sqft office space",
+        "Status: under construction",
+        "Price: 1.8 crore",
+        "Commercial type: office",
+        "Land area:",
+        "Built-up area: 2000",
+      ].join("\n"),
+    );
+
+    assert.equal(values.commercialKind, "office", "must be genuinely captured");
+    assert.equal(values.listingType, "both");
+    assert.equal(values.status, "Under construction");
+    assert.equal(values.amount, 18_000_000);
+    assert.equal(values.landArea, undefined, "a blank line is not a value");
+    // fixedUnit fills in what the employee did not write.
+    assert.equal(values.builtUpArea, 2000);
+    assert.equal(missingRequired(COMMERCIAL_FORM, values).length, 0);
+  });
+
+  check("blank lines and untouched hints are not values", () => {
+    const { values, unreadable } = parseForm(
+      RESIDENTIAL_FORM,
+      [
+        "Listing type: rental",
+        "Locality: Aluva",
+        "City: Kochi",
+        "Configuration: 2 BHK flat",
+        "Status: new launch",
+        // Sent back exactly as it arrived.
+        "Price: required unless rental only",
+        "Bedrooms:",
+        "Bathrooms:",
+        "Land area: e.g. 12 cents — leave blank if none",
+        "Built-up area:",
+      ].join("\n"),
+    );
+
+    assert.deepEqual(unreadable, [], "an untouched hint is not an error");
+    assert.equal(values.amount, undefined);
+    assert.equal(values.landArea, undefined);
+    assert.equal(values.beds, 2, "still read from the configuration line");
+  });
+
+  check("price is required for a sale and not for a rental", () => {
+    const rental = { listingType: "rental", locality: "A", city: "B", configuration: "2 BHK", status: "New launch" };
+    assert.equal(
+      missingRequired(RESIDENTIAL_FORM, rental).length,
+      0,
+      "a rental-only listing has no asking price to give",
+    );
+
+    const sale = { ...rental, listingType: "sale" };
+    const missing = missingRequired(RESIDENTIAL_FORM, sale);
+    assert.equal(missing.length, 1);
+    assert.equal(missing[0].label, "Price");
+  });
+
+  check("only the missing fields are asked for again", () => {
+    const { values } = parseForm(
+      RESIDENTIAL_FORM,
+      ["Listing type: sale", "Configuration: 3 BHK villa", "Price: 90 lakh"].join("\n"),
+    );
+    const missing = missingRequired(RESIDENTIAL_FORM, values);
+    assert.deepEqual(
+      missing.map((f) => f.label).sort(),
+      ["City", "Locality", "Status"],
+      "exactly what is outstanding",
+    );
+
+    const reask = reaskFor(missing);
+    assert.ok(reask.includes("Locality:"));
+    assert.ok(!reask.includes("Price"), "already given, must not be asked again");
+    assert.ok(!reask.includes("Bedrooms"), "optional and blank, not outstanding");
+  });
+
+  check("a value that cannot be read is named, not swallowed", () => {
+    const { values, unreadable } = parseForm(
+      RESIDENTIAL_FORM,
+      ["Locality: Kakkanad", "Price: ask me later", "Bedrooms: three"].join("\n"),
+    );
+    assert.equal(values.locality, "Kakkanad", "the readable lines still land");
+    assert.deepEqual(
+      unreadable.map((u) => u.label).sort(),
+      ["Bedrooms", "Price"],
+      "both bad lines reported by name",
+    );
+  });
+
+  check("a mistyped label still finds its field", () => {
+    const { values } = parseForm(
+      RESIDENTIAL_FORM,
+      ["Bult-up area: 1200 sqft", "Loclaity: Edappally", "listing type: sale"].join("\n"),
+    );
+    assert.equal(values.builtUpArea, 1200);
+    assert.equal(values.locality, "Edappally");
+    assert.equal(values.listingType, "sale");
+  });
+
+  check("money is read the way it is actually written", () => {
+    for (const [given, expected] of [
+      ["85 lakh", 8_500_000],
+      ["85lakh", 8_500_000],
+      ["1.8 crore", 18_000_000],
+      ["1.8 Cr", 18_000_000],
+      ["90L", 9_000_000],
+      ["₹1,85,00,000", 18_500_000],
+      ["8500000", 8_500_000],
+      ["45 k", 45_000],
+    ] as const) {
+      assert.equal(parseMoney(given), expected, `"${given}"`);
+    }
+    assert.equal(parseMoney("ask me later"), null);
+    assert.equal(parseMoney(""), null);
+  });
+
+  check("areas carry their unit", () => {
+    assert.deepEqual(parseArea("12 cents"), { value: 12, unit: "cent" });
+    assert.deepEqual(parseArea("2.5 acres"), { value: 2.5, unit: "acre" });
+    assert.deepEqual(parseArea("1800 sqft"), { value: 1800, unit: "sqft" });
+    // A field with a fixed unit accepts a bare number.
+    assert.deepEqual(parseArea("2000", "sqft"), { value: 2000, unit: "sqft" });
+    // An explicitly written unit beats the fixed one rather than being ignored.
+    assert.deepEqual(parseArea("12 cents", "sqft"), { value: 12, unit: "cent" });
+    assert.equal(parseArea("quite big"), null);
+  });
+
+  check("the same mechanism carries the lead form", () => {
+    // §Generalise: this is not a property-only device.
+    const { values } = parseForm(
+      LEAD_FORM,
+      [
+        "Name: Raj Menon",
+        "Mobile: 9876543210",
+        "Email:",
+        "City: Kochi",
+        "Looking for: 3 BHK in Kakkanad under 90 lakh",
+        "Note: called at 6pm",
+      ].join("\n"),
+    );
+    assert.equal(values.leadName, "Raj Menon");
+    assert.equal(values.mobile, "9876543210");
+    assert.equal(values.email, undefined);
+    assert.equal(values.propertyQuery, "3 BHK in Kakkanad under 90 lakh");
+    assert.equal(missingRequired(LEAD_FORM, values).length, 0);
+  });
+
+  check("every form id resolves, so a parked form can always be found", () => {
+    for (const form of [PROPERTY_KIND_FORM, RESIDENTIAL_FORM, COMMERCIAL_FORM, LEAD_FORM]) {
+      assert.equal(formById(form.id)?.id, form.id, form.id);
+    }
+    assert.equal(formById("nope"), null);
+  });
+
+  check("the form collects what the schema actually requires", () => {
+    // The old REQUIRED array never asked for these three and hardcoded all of
+    // them, so a listing's type, status and commercial kind were whatever the
+    // code said rather than what was true.
+    const labels = COMMERCIAL_FORM.fields.map((f) => f.key);
+    for (const required of ["listingType", "status", "commercialKind"]) {
+      assert.ok(labels.includes(required), `${required} must be asked for`);
+    }
+    assert.ok(
+      RESIDENTIAL_FORM.fields.some((f) => f.key === "listingType" && f.required),
+      "listing type is required, not assumed to be a sale",
+    );
   });
 
   await Promise.all(pending);

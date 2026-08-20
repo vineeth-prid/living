@@ -12,6 +12,12 @@ import { COMMANDS, isAllowed, missingFields } from "./registry";
 import * as handlers from "./handlers";
 import type { HandlerResult } from "./handlers";
 import { startDraft } from "./draft";
+import {
+  formById,
+  parseForm,
+  type IntakeForm,
+  type IntakeState,
+} from "./intake";
 import { attachWhatsAppMedia } from "./media";
 import { inr, t } from "./templates";
 
@@ -79,6 +85,48 @@ export async function handleEmployeeMessage(input: {
   // command should not have their message interpreted, let alone executed.
   if (!input.canRunCommands) {
     await reply(t.noCrmAccess());
+    return;
+  }
+
+  // §55b. A filled-in form is not a sentence, so it never goes to the model.
+  //
+  // This is the whole point of template intake: the labels anchor extraction,
+  // so a typo in a value cannot be reinterpreted as some other intent. Placed
+  // above parseIntent deliberately — routing it through the classifier first is
+  // the bug this replaces.
+  const waitingOn = intakeForm(pending);
+  if (waitingOn && pending) {
+    // "cancel" has to keep working mid-form, and it is the one word that must
+    // not be read as a field value.
+    if (/^(cancel|stop|forget it|never mind)\b/i.test(text)) {
+      await closePending(pending.id, "cancelled");
+      await reply(t.cancelled());
+      return;
+    }
+
+    const { values, unreadable } = parseForm(waitingOn, text);
+    const merged = { ...pendingEntities(pending), ...values };
+
+    // Named values that could not be read — "Price: soon". Asking about just
+    // those beats discarding a form somebody has already typed out.
+    if (unreadable.length > 0) {
+      const question = t.unreadableFields(unreadable);
+      await updatePending(pending.id, merged, question);
+      await reply(question);
+      return;
+    }
+
+    await closePending(pending.id, "executed");
+    await runBatch({
+      ...input,
+      reply,
+      actions: [{ intent: pending.intent as Intent, entities: merged }],
+      // The employee's own words in a known shape. There is no interpretation
+      // here to be uncertain about.
+      confidence: 1,
+      model: "template",
+      resumed: true,
+    });
     return;
   }
 
@@ -540,6 +588,35 @@ async function closePending(id: string, status: "executed" | "cancelled") {
   await db()
     .update(whatsappCommandExecutions)
     .set({ status, confirmedAt: new Date() })
+    .where(eq(whatsappCommandExecutions.id, id));
+}
+
+/** The form a parked command is waiting on, if it is waiting on one. */
+function intakeForm(pending: PendingRow | null): IntakeForm | null {
+  if (!pending || pending.status !== "awaiting_clarification") return null;
+  const id = (pending.entities as IntakeState | null)?.__intake;
+  return id ? formById(id) : null;
+}
+
+/**
+ * Keeps a partly-read form on the row and restarts its clock.
+ *
+ * Without this, a form with one unreadable line would be answered with a
+ * question and then have nothing to merge the answer into — the employee would
+ * have to retype the lot.
+ */
+async function updatePending(
+  id: string,
+  entities: Record<string, unknown>,
+  question: string,
+) {
+  await db()
+    .update(whatsappCommandExecutions)
+    .set({
+      entities,
+      resultSummary: question,
+      expiresAt: new Date(Date.now() + PENDING_COMMAND_TTL_MS),
+    })
     .where(eq(whatsappCommandExecutions.id, id));
 }
 
