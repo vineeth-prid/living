@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 100 assertions covering signature verification
+`npm run check:whatsapp` — 105 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,34 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## Content comes from the message
+
+Three kinds of value are read from what the employee actually wrote, with the
+model as the fallback rather than the source: dates (`scheduleAt`), amounts
+(`amountFrom`) and now note text (`noteFrom`).
+
+The reason is the same each time, but it is sharpest for notes. A note *is*
+the record of what was said. "Add note to Raj: interested in OMR" filed as
+"Client expressed interest in the OMR property" is not a formatting
+difference — it is a different note, and nobody reading it later can tell.
+
+`noteFrom` takes quoted text first, then everything after the first colon (a
+note may contain its own — "met at 3:30"). With nothing delimited it falls
+back to the model's reading, which is all there is to go on.
+
+Lead status normalises spaces and case to a key, then `matchOption` catches
+the near misses — "in negotiation", "negotiating" — so nobody has to pick the
+exact spelling out of a list of eleven. A genuine non-status still gets the
+refusal and the list.
+
+### Creating a lead
+
+`CREATE_LEAD` sends the form only when a name or a number is missing.
+"Add lead Raj 9876543210" carries both, so it creates the lead in one
+message — the form is what happens when something is missing, not a toll on
+every route. The trade is that a one-shot skips the optional fields the form
+collects (email, city, requirement, note).
 
 ## Filters must apply or refuse
 

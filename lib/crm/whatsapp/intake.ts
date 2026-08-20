@@ -480,3 +480,29 @@ const FORMS = [
 
 export const formById = (id: string): IntakeForm | null =>
   FORMS.find((f) => f.id === id) ?? null;
+
+/**
+ * The employee's own words, when the message plainly delimits them.
+ *
+ * A note is content, not an instruction — "Add note to Raj: interested in OMR"
+ * has to be filed as "interested in OMR" and not as the model's summary of it.
+ * Same rule as dates and money: the message decides, and the model is only the
+ * fallback when the message gives nothing to go on.
+ *
+ * Quotes first, then everything after the first colon: a note may itself
+ * contain a colon ("met at 3:30"), and the first one is the delimiter.
+ */
+export function verbatimNote(text: string): string | null {
+  const quoted = text.match(/["“']([^"”']{2,})["”']/);
+  if (quoted) return quoted[1].trim() || null;
+
+  const colon = text.indexOf(":");
+  if (colon === -1) return null;
+
+  const after = text.slice(colon + 1).trim();
+  return after.length >= 2 ? after : null;
+}
+
+/** The note to file: the message's own words first, the model's second. */
+export const noteFrom = (text: string, modelNote?: string | null): string | null =>
+  verbatimNote(text) ?? (modelNote?.trim() || null);

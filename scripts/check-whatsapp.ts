@@ -28,6 +28,7 @@ import {
   COMMAND_EXECUTION_STATUSES,
   FOLLOWUP_KINDS,
   LEAD_PRIORITIES,
+  LEAD_STATUSES,
   whatsappCommandExecutions,
 } from "../lib/db/schema";
 import { OUTBOUND_RATE } from "../lib/integrations/whatsapp/config";
@@ -45,6 +46,7 @@ import {
   RESIDENTIAL_FORM,
   formById,
   matchOption,
+  noteFrom,
   missingRequired,
   parseArea,
   parseForm,
@@ -1619,6 +1621,88 @@ async function main() {
     assert.match(card, /₹90L/, "the budget uses the same shorthand as everywhere");
     assert.match(card, /in discussion/, "statuses read as words, not enum keys");
     assert.match(card, /No follow-up scheduled/);
+  });
+
+
+  // --- updating a lead ------------------------------------------------------
+
+  check("a note is filed in the words it was written in", () => {
+    // A note is the record of what was said. A model that tidies "interested
+    // in OMR" into something else has changed the record, and nobody reading
+    // it later would know.
+    assert.equal(
+      noteFrom("Add note to Raj: interested in OMR", "Client expressed interest"),
+      "interested in OMR",
+    );
+    // The first colon delimits; a note may contain its own.
+    assert.equal(
+      noteFrom("Add note to Raj: met at 3:30, wants a second visit", null),
+      "met at 3:30, wants a second visit",
+    );
+    // Quoted works too, and wins over the colon rule.
+    assert.equal(
+      noteFrom('Add a note to Raj saying "interested in OMR"', "x"),
+      "interested in OMR",
+    );
+  });
+
+  check("the model's note is the fallback, not the default", () => {
+    // Nothing delimited in the message, so the model's reading is all there is.
+    assert.equal(noteFrom("add a note for Raj", "  called this morning  "), "called this morning");
+    assert.equal(noteFrom("add a note for Raj", null), null);
+    assert.equal(noteFrom("add a note for Raj", ""), null);
+    // A colon with nothing usable after it is not a note.
+    assert.equal(noteFrom("note:", "fallback"), "fallback");
+  });
+
+  check("a lead status is matched the way people write it", () => {
+    const norm = (v: string) => v.toLowerCase().replace(/[\s-]+/g, "_");
+    const resolve = (given: string) => {
+      const n = norm(given);
+      return (LEAD_STATUSES as readonly string[]).includes(n)
+        ? n
+        : (matchOption(n, LEAD_STATUSES) ?? n);
+    };
+
+    assert.equal(resolve("negotiation"), "negotiation");
+    assert.equal(resolve("Negotiation"), "negotiation");
+    // The phrasing in the brief's own example.
+    assert.equal(resolve("in negotiation"), "negotiation");
+    assert.equal(resolve("negotiating"), "negotiation");
+    assert.equal(resolve("site visit scheduled"), "site_visit_scheduled");
+    assert.equal(resolve("Closed Won"), "closed_won");
+    assert.equal(resolve("on hold"), "on_hold");
+  });
+
+  check("a word that is not a status is still refused", () => {
+    // Tolerance must not become "pick the nearest of eleven whatever happens".
+    const resolved = matchOption("banana", LEAD_STATUSES);
+    assert.ok(
+      resolved === null || !(LEAD_STATUSES as readonly string[]).includes("banana"),
+      "nonsense must not resolve to a real status",
+    );
+    assert.equal(matchOption("purple", LEAD_STATUSES), null);
+  });
+
+  check("the lead form asks only for what is missing", () => {
+    // "Add lead Raj 9876543210" carries both essentials, so it creates the
+    // lead in one message. The form is what happens when something is
+    // missing, not a toll on every route.
+    const complete = { leadName: "Raj Menon", mobile: "9876543210" };
+    assert.equal(missingRequired(LEAD_FORM, complete).length, 0);
+
+    const nameOnly = { leadName: "Raj Menon" };
+    assert.deepEqual(
+      missingRequired(LEAD_FORM, nameOnly).map((f) => f.label),
+      ["Mobile"],
+      "only the number is outstanding",
+    );
+
+    // And the optional fields the old two-question loop never asked for.
+    const labels = LEAD_FORM.fields.map((f) => f.label);
+    for (const optional of ["Email", "City", "Looking for", "Note"]) {
+      assert.ok(labels.includes(optional), `${optional} should be collectable`);
+    }
   });
 
 

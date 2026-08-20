@@ -29,7 +29,7 @@ import { can } from "@/lib/auth/dal";
 import { PERMISSIONS } from "@/lib/auth/constants";
 import { priceLabelFor, publishBlockers } from "@/lib/validation/property";
 import { amountFrom } from "@/lib/money";
-import { matchOption } from "./intake";
+import { matchOption, noteFrom } from "./intake";
 import type { SessionUser } from "@/lib/auth/session";
 import type { Entities } from "@/lib/ai/crm-intent/schema";
 import {
@@ -349,11 +349,15 @@ export async function addLeadNote(
 ): Promise<HandlerResult> {
   const found = await needLead(ctx, e);
   if (!found.ok) return no(found.fail);
-  if (!e.note) return no("What should the note say?");
+  // The message decides the wording. A note is the record of what was said,
+  // and a model that paraphrases "interested in OMR" into something tidier has
+  // changed the record.
+  const body = noteFrom(ctx.text, e.note);
+  if (!body) return no("What should the note say?");
 
   await addNoteService({
     leadId: found.value.id,
-    body: e.note,
+    body,
     actorId: ctx.user.id,
     via: "WhatsApp",
   });
@@ -371,7 +375,15 @@ export async function changeLeadStatus(
   const found = await needLead(ctx, e);
   if (!found.ok) return no(found.fail);
 
-  const wanted = (e.status ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+  // "Negotiation" and "site visit scheduled" already normalise to a key here.
+  // matchOption then catches the near misses — "negotiating", "in
+  // negotiation" — rather than making someone pick the exact spelling out of a
+  // list of eleven. A genuine non-status still falls through to the refusal.
+  const normalised = (e.status ?? "").toLowerCase().replace(/[\s-]+/g, "_");
+  const wanted = (LEAD_STATUSES as readonly string[]).includes(normalised)
+    ? normalised
+    : (matchOption(normalised, LEAD_STATUSES) ?? normalised);
+
   if (!(LEAD_STATUSES as readonly string[]).includes(wanted)) {
     return no(
       `“${e.status ?? ""}” isn't a lead status. Valid ones: ${LEAD_STATUSES.join(", ").replace(/_/g, " ")}.`,
@@ -404,7 +416,7 @@ export async function addLeadActivity(
   const found = await needLead(ctx, e);
   if (!found.ok) return no(found.fail);
 
-  const summary = e.note ?? e.summary;
+  const summary = noteFrom(ctx.text, e.note ?? e.summary);
   if (!summary) return no("What should I record against them?");
 
   await recordActivity({
