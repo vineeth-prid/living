@@ -7,6 +7,7 @@ import { openWAConfig } from "@/lib/integrations/whatsapp/config";
 import type { InboundMedia } from "@/lib/integrations/whatsapp/types";
 import type { SessionUser } from "@/lib/auth/session";
 import type { HandlerResult } from "./handlers";
+import { t } from "./templates";
 
 // §5. A file sent over WhatsApp becomes a property_media row in MinIO, through
 // the same attachMedia the admin panel uses — one storage system, one set of
@@ -68,10 +69,13 @@ export async function attachWhatsAppMedia(input: {
   if (!propertyId) {
     // §6 of the original brief: guessing which listing a photo belongs to is
     // the same mistake as guessing which lead a note belongs to.
+    // No example reference. A placeholder that looks real gets typed back
+    // verbatim — LIV-0027 was sent as an answer here, resolved to nothing, and
+    // the message then fell through to the classifier with no context at all.
     return {
       ok: false,
-      reply:
-        "Which property is that for? Send the reference first — for example *add photos to LIV-0027* — then the files.",
+      needsProperty: true,
+      reply: t.whichProperty(),
     };
   }
 

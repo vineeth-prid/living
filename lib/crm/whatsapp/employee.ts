@@ -1,6 +1,9 @@
 import { and, desc, eq, gt, inArray, lt } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { whatsappCommandExecutions } from "@/lib/db/schema";
+import {
+  whatsappCommandExecutions,
+  whatsappConversations,
+} from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { parseIntent } from "@/lib/ai/crm-intent/parser";
 import type { Entities, Intent, IntentAction } from "@/lib/ai/crm-intent/schema";
@@ -66,11 +69,21 @@ export async function handleEmployeeMessage(input: {
     });
     await record({
       ...input,
-      intent: "ADD_PROPERTY_MEDIA",
+      // Parked as a GET_PROPERTY question when there was nothing to attach to.
+      // The next message then merges into "which property?" and resolves one,
+      // which anchors the thread — rather than reaching the classifier with no
+      // context, where a bare reference was read as an unrelated intent.
+      intent: result.needsProperty ? "GET_PROPERTY" : "ADD_PROPERTY_MEDIA",
       confidence: null,
       model: "none",
       entities: {},
-      status: result.ok ? "executed" : "rejected",
+      status: result.ok
+        ? "executed"
+        : result.needsProperty
+          ? "awaiting_clarification"
+          : "rejected",
+      question: result.needsProperty ? result.reply : null,
+      expires: result.needsProperty,
       target: result.target,
       summary: result.summary ?? result.reply.slice(0, 200),
     });
@@ -667,6 +680,21 @@ async function record(args: {
     error: args.error?.slice(0, 500) ?? null,
     executedAt: args.status === "executed" ? new Date() : null,
   });
+
+  // The thread now has a subject. attachWhatsAppMedia already falls back to
+  // this when a photo arrives with no reference — it was simply never written
+  // on the employee side, so every photo after a draft was created asked for a
+  // reference that had been shown once, several messages earlier.
+  //
+  // Done here rather than in each handler because record() is the one funnel
+  // every command outcome passes through, and every one of them carries its
+  // target already.
+  if (args.target?.entity === "property") {
+    await db()
+      .update(whatsappConversations)
+      .set({ propertyId: args.target.id, updatedAt: new Date() })
+      .where(eq(whatsappConversations.id, args.conversationId));
+  }
 }
 
 export { pendingCommand };

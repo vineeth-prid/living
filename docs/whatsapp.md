@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 84 assertions covering signature verification
+`npm run check:whatsapp` — 87 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,31 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## What the thread is about
+
+`whatsapp_conversations.property_id` is the thread's current subject, and
+`attachWhatsAppMedia` falls back to it when a photo arrives with no
+reference. It is written in `record()` — the one funnel every command outcome
+passes through — whenever a command's target is a property.
+
+That covers draft creation, price changes, publishing and plain lookups, so a
+photo sent straight after any of them attaches on its own. Before this it was
+only ever written on the customer side, so an employee who had just created a
+draft was asked for a reference that had been shown once, several messages
+earlier.
+
+Two related rules for wording:
+
+- **A message that asks a question must not contain an example reference.**
+  `LIV-0027` in the media prompt was typed back as the answer, resolved to
+  nothing, and left the thread unanchored — where the classifier read a bare
+  reference as `ADD_FOLLOWUP`. Describe the shape (`LIV-XXXX`) instead. A
+  check asserts no question carries a `LIV-<digits>`.
+- **A file with nothing to attach it to parks a question**, via
+  `needsProperty` on the handler result, so the next message is still an
+  answer to "which property?" rather than a fresh sentence for the
+  classifier to guess at.
 
 ## Template intake
 

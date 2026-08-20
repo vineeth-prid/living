@@ -33,6 +33,7 @@ import { zonedDateTime } from "../lib/crm/whatsapp/time";
 import { resolveRelativeDate, scheduleAt } from "../lib/crm/whatsapp/dates";
 import { kindFor } from "../lib/crm/whatsapp/media";
 import { t } from "../lib/crm/whatsapp/templates";
+import type { HandlerResult } from "../lib/crm/whatsapp/handlers";
 import { systemHealth } from "../lib/health";
 import {
   COMMERCIAL_FORM,
@@ -1353,6 +1354,58 @@ async function main() {
       RESIDENTIAL_FORM.fields.some((f) => f.key === "listingType" && f.required),
       "listing type is required, not assumed to be a sale",
     );
+  });
+
+  // --- keeping the thread anchored to a property ----------------------------
+  //
+  // Regression cases for a live bug. A draft was created, a photo sent
+  // immediately, and the reply asked for a reference using "LIV-0027" as the
+  // example. That example was typed back as the answer, resolved to nothing,
+  // and the message then reached the classifier with no context — where it was
+  // read as ADD_FOLLOWUP and started asking unrelated questions on a loop.
+
+  check("the media prompt offers no reference that could be typed back", () => {
+    const prompt = t.whichProperty();
+
+    // The specific placeholder that was mistaken for a real listing.
+    assert.ok(!prompt.includes("LIV-0027"), "must not name LIV-0027");
+
+    // Nor any other reference that would resolve: the shape may be described,
+    // but no digits that could be sent back as an answer.
+    const resolvable = prompt.match(/LIV-\d+/gi);
+    assert.equal(
+      resolvable,
+      null,
+      `prompt still contains a usable reference: ${resolvable?.join(", ")}`,
+    );
+
+    // It still has to say what a reference looks like, or the ask is useless.
+    assert.match(prompt, /LIV-X+/i, "should describe the shape");
+  });
+
+  check("no outbound wording hands back a typeable reference", () => {
+    // The same trap anywhere else: an example reference in a message that is
+    // asking a question invites it as the answer.
+    const asking = [t.whichProperty(), t.missingField("propertyReference", "GET_PROPERTY")];
+    for (const message of asking) {
+      assert.equal(
+        message.match(/LIV-\d+/gi),
+        null,
+        `a question must not carry a real-looking reference: ${message}`,
+      );
+    }
+  });
+
+  check("a photo with nothing to attach it to parks a question", () => {
+    // Fix 3: the flag is what makes the pipeline record awaiting_clarification
+    // instead of a dead "rejected", so the next message is still an answer.
+    const result: HandlerResult = {
+      ok: false,
+      needsProperty: true,
+      reply: t.whichProperty(),
+    };
+    assert.equal(result.ok, false);
+    assert.equal(result.needsProperty, true, "the pipeline branches on this");
   });
 
   await Promise.all(pending);

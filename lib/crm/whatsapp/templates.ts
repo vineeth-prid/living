@@ -47,7 +47,7 @@ export const t = {
   missingField: (field: string, intent: string) => {
     const asks: Record<string, string> = {
       leadName: "Which lead?",
-      propertyReference: "Which property? Give me the reference, like LIV-0027.",
+      propertyReference: "Which property? Give me its reference — it looks like LIV-XXXX.",
       date: "Which day?",
       note: "What should it say?",
       status: "Which status?",
@@ -169,6 +169,16 @@ export const t = {
 
   publishBlocked: (property: string, reasons: string[]) =>
     [`I can't publish ${property} yet:`, ...reasons.map((r) => `• ${r}`)].join("\n"),
+
+  /**
+   * A file arrived with nothing to attach it to.
+   *
+   * Deliberately gives no example reference. The placeholder that used to be
+   * here — LIV-0027 — was typed back as the answer, resolved to nothing, and
+   * left the thread with no context at all. The shape is described instead.
+   */
+  whichProperty: () =>
+    "Which property is that for? Reply with its reference — it looks like LIV-XXXX — and then send the files again.",
 
   /** Named lines that were filled in but could not be read. */
   unreadableFields: (fields: { label: string; given: string }[]) =>

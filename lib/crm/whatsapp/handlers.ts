@@ -74,6 +74,12 @@ export type HandlerResult = {
    * the employee retype the whole instruction.
    */
   needs?: { question: string; entities: Record<string, unknown> };
+  /**
+   * Set when a file arrived with nothing to attach it to. The pipeline parks a
+   * question so the next message is still an answer to "which property?"
+   * rather than an unanchored sentence for the classifier to guess at.
+   */
+  needsProperty?: boolean;
   ok: boolean;
 };
 
