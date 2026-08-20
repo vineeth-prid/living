@@ -33,9 +33,14 @@ import {
 } from "../lib/db/schema";
 import { OUTBOUND_RATE } from "../lib/integrations/whatsapp/config";
 import { zonedDateTime } from "../lib/crm/whatsapp/time";
-import { resolveRelativeDate, scheduleAt } from "../lib/crm/whatsapp/dates";
+import {
+  normaliseIsoDate,
+  resolveRelativeDate,
+  scheduleAt,
+  timeInText,
+} from "../lib/crm/whatsapp/dates";
 import { kindFor } from "../lib/crm/whatsapp/media";
-import { t } from "../lib/crm/whatsapp/templates";
+import { dateTime, t } from "../lib/crm/whatsapp/templates";
 import type { HandlerResult } from "../lib/crm/whatsapp/handlers";
 import { systemHealth } from "../lib/health";
 import { publishBlockers } from "../lib/validation/property";
@@ -369,7 +374,17 @@ async function main() {
     assert.ok("error" in parseIntentJson('{"intent":"DROP_TABLE","confidence":1}'));
     assert.ok("error" in parseIntentJson('{"intent":"HELP","confidence":7}'));
     assert.ok("error" in parseIntentJson('{"confidence":0.9}'));
-    assert.ok("error" in parseIntentJson('{"intent":"ADD_FOLLOWUP","confidence":0.9,"entities":{"date":"tomorrow"}}'));
+
+    // A loosely written date is no longer the schema's business. It used to be
+    // rejected here, which discarded the whole response over one field; date
+    // and time are now normalised in dates.ts, and an unreadable one becomes a
+    // question rather than a booking. The rejection moved, it did not go away
+    // — see "an unreadable date asks rather than booking something wrong".
+    const loose = parseIntentJson(
+      '{"intent":"ADD_FOLLOWUP","confidence":0.9,"entities":{"date":"tomorrow"}}',
+    );
+    assert.ok(!("error" in loose), "the response survives a loose date");
+    assert.equal(loose.actions[0].intent, "ADD_FOLLOWUP");
   });
 
   // --- §36: the registry is the authority -----------------------------------
@@ -1703,6 +1718,83 @@ async function main() {
     for (const optional of ["Email", "City", "Looking for", "Note"]) {
       assert.ok(labels.includes(optional), `${optional} should be collectable`);
     }
+  });
+
+
+  // --- scheduling -----------------------------------------------------------
+
+  check("the hour is read from the message, whatever the model called it", () => {
+    const now = new Date("2026-08-20T09:00:00+05:30");
+    const at = (text: string, modelTime?: string) => {
+      const r = scheduleAt({ text, modelDate: "2026-08-21", time: modelTime, now });
+      assert.ok(r.ok, `expected a booking for "${text}"`);
+      return dateTime(r.dueAt);
+    };
+
+    // The commonest way anyone schedules anything.
+    assert.match(at("Add follow-up for Raj tomorrow at 10am", "10am"), /10:00\s*am/i);
+    assert.match(at("Move Raj's follow-up to Friday 4pm"), /4:00\s*pm/i);
+    assert.match(at("call Raj tomorrow at 10:30am"), /10:30\s*am/i);
+
+    // The message wins over the model, so a model that mangles the hour costs
+    // nothing.
+    assert.match(at("Add follow-up for Raj tomorrow at 10am", "23:00"), /10:00\s*am/i);
+  });
+
+  check("a time only counts when it is unambiguous", () => {
+    assert.equal(timeInText("tomorrow at 10am"), "10:00");
+    assert.equal(timeInText("Friday 4pm"), "16:00");
+    assert.equal(timeInText("at 16:00"), "16:00");
+    assert.equal(timeInText("12am"), "00:00", "midnight, not noon");
+    assert.equal(timeInText("12pm"), "12:00", "noon, not midnight");
+
+    // "at 10" could be either end of the day. Booking a site visit for 10pm
+    // because the code guessed is worse than using the default.
+    assert.equal(timeInText("tomorrow at 10"), null);
+    assert.equal(timeInText("tomorrow"), null);
+    assert.equal(timeInText("25:00"), null);
+    assert.equal(timeInText("10:99"), null);
+  });
+
+  check("a badly formatted time no longer discards the whole response", () => {
+    // The schema demanded HH:MM exactly, so a model answering "10am" failed
+    // validation and took a correct intent, a correct lead and a correct day
+    // down with it.
+    for (const time of ["10:00", "10am", "10:00 AM", "4pm", "half past ten"]) {
+      const parsed = parseIntentJson(
+        JSON.stringify({
+          actions: [
+            {
+              intent: "ADD_FOLLOWUP",
+              entities: { leadName: "Raj", date: "2026-08-21", time },
+            },
+          ],
+          confidence: 0.95,
+        }),
+      );
+      assert.ok(!("error" in parsed), `"${time}" should not sink the response`);
+      assert.equal(parsed.actions[0].intent, "ADD_FOLLOWUP");
+      assert.equal(parsed.actions[0].entities.leadName, "Raj");
+    }
+  });
+
+  check("an unreadable date asks rather than booking something wrong", () => {
+    const now = new Date("2026-08-20T09:00:00+05:30");
+    const r = scheduleAt({ text: "book it in", modelDate: "not a date", now });
+    assert.ok(!r.ok, "a date that cannot be read must not become a booking");
+    assert.match(r.ask, /day/i);
+
+    // A day that has already gone is a question, not a silently past due date.
+    const past = scheduleAt({ text: "book it in", modelDate: "2020-01-01", now });
+    assert.ok(!past.ok);
+    assert.match(past.ask, /passed/i);
+  });
+
+  check("a loosely written model date is still read", () => {
+    assert.equal(normaliseIsoDate("2026-8-1"), "2026-08-01");
+    assert.equal(normaliseIsoDate("2026-08-21"), "2026-08-21");
+    assert.equal(normaliseIsoDate("21-08-2026"), null, "not an ISO date");
+    assert.equal(normaliseIsoDate("soon"), null);
   });
 
 

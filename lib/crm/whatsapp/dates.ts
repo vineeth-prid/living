@@ -127,10 +127,14 @@ export function scheduleAt(input: {
     };
   }
 
-  const iso = relative?.iso ?? input.modelDate;
+  const iso = relative?.iso ?? normaliseIsoDate(input.modelDate);
   if (!iso) return { ok: false, ask: "Which day?" };
 
-  const dueAt = zonedDateTime(iso, input.time);
+  // Same precedent as the day: "at 10am" is the employee's word, and reading
+  // it here means the model's spelling of it never matters.
+  const time = timeInText(input.text) ?? normaliseTime(input.time) ?? undefined;
+
+  const dueAt = zonedDateTime(iso, time);
   if (!dueAt) return { ok: false, ask: "I couldn't read that date. Try “tomorrow at 10am”." };
 
   // Start of today in Living's timezone — a time earlier today is fine (someone
@@ -144,4 +148,57 @@ export function scheduleAt(input: {
   }
 
   return { ok: true, dueAt };
+}
+
+/**
+ * A clock time out of the message, as "HH:MM".
+ *
+ * "tomorrow at 10am" is the commonest way anyone schedules anything, and the
+ * hour is as much the employee's word as the day is. Reading it here means a
+ * model that answers "10am" — or "10:00 AM", or "4pm" — costs nothing.
+ *
+ * Only explicit forms. A bare "at 10" could be either end of the day, and
+ * booking a site visit for 10pm because the code guessed is worse than asking.
+ */
+export function timeInText(text: string): string | null {
+  const said = text.toLowerCase();
+
+  const meridiem = said.match(/\b(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)\b/);
+  if (meridiem) {
+    let hour = Number(meridiem[1]);
+    const minute = Number(meridiem[2] ?? 0);
+    if (hour < 1 || hour > 12 || minute > 59) return null;
+    if (meridiem[3] === "pm" && hour !== 12) hour += 12;
+    if (meridiem[3] === "am" && hour === 12) hour = 0;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
+  const clock = said.match(/\b(\d{1,2}):(\d{2})\b/);
+  if (clock) {
+    const hour = Number(clock[1]);
+    const minute = Number(clock[2]);
+    if (hour > 23 || minute > 59) return null;
+    return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  }
+
+  return null;
+}
+
+/**
+ * Whatever the model called a time, as "HH:MM" — or null.
+ *
+ * The schema used to demand "HH:MM" exactly, which meant a model answering
+ * "10am" failed validation and took the entire response down with it: a
+ * correct intent, a correct lead and a correct day, all discarded over the
+ * formatting of one field.
+ */
+export const normaliseTime = (raw?: string | null): string | null =>
+  raw ? timeInText(raw) : null;
+
+/** "2026-8-1" → "2026-08-01". Anything unreadable stays null. */
+export function normaliseIsoDate(raw?: string | null): string | null {
+  const match = raw?.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
 }

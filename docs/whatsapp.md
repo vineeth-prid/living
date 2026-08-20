@@ -164,7 +164,7 @@ tables can stay; they cost nothing when empty.
 
 ## Verified automatically
 
-`npm run check:whatsapp` — 105 assertions covering signature verification
+`npm run check:whatsapp` — 110 assertions covering signature verification
 (valid, tampered, missing, wrong secret, no secret), malformed payloads, missing
 idempotency keys, echo and group-chat suppression, phone normalisation across
 every spelling plus foreign numbers, AI output validation (bad intent, bad
@@ -179,6 +179,31 @@ but never granting (§13), echo suppression across all three spellings of
 inactive and non-enabled employees refused, unknown numbers refused, an
 employee unable to resolve another employee's lead, and the internal price
 fields absent from every WhatsApp projection. Skips without DATABASE_URL.
+
+## Scheduling
+
+`scheduleAt` reads the day and now the hour from the message. "tomorrow at
+10am" is the commonest way anyone schedules anything, and the hour is as much
+the employee's word as the day is.
+
+Only unambiguous forms count: "10am", "4pm", "10:30am", "16:00". A bare "at
+10" is left to the default, because booking a site visit for 10pm on a guess
+is worse than booking it at the usual hour.
+
+The `date` and `time` entities are loosely typed now. They used to demand
+"YYYY-MM-DD" and "HH:MM" exactly, so a model answering "10am" failed
+validation and took the whole response down with it — correct intent, correct
+lead, correct day, discarded over one field's formatting. Normalisation and
+refusal both live in `dates.ts`, where an unreadable date becomes a question
+instead of a wrong booking.
+
+### Confirmations replay the original message
+
+A confirmed action re-runs with the text that raised the question, not with
+the word "yes". Dates, amounts and note wording are all read from the
+message, so replaying "yes" would discard the figure the employee typed and
+quietly fall back to the model's version of it. `originalText` was always
+stored on the pending row; it is now read back.
 
 ## Content comes from the message
 

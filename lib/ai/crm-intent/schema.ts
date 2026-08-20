@@ -84,10 +84,19 @@ const entityFields = z
     status: z.string().trim().min(1).optional(),
     priority: z.string().trim().min(1).optional(),
     note: z.string().trim().min(1).optional(),
-    /** ISO date, resolved by the model against the date it was given. */
-    date: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    /** 24-hour HH:MM. */
-    time: z.string().trim().regex(/^\d{2}:\d{2}$/).optional(),
+    /**
+     * A day and a time, loosely typed on purpose.
+     *
+     * These used to demand "YYYY-MM-DD" and "HH:MM" exactly, and a model
+     * answering "10am" failed validation — which took the whole response down
+     * with it: correct intent, correct lead, correct day, all discarded over
+     * the formatting of one field.
+     *
+     * dates.ts normalises both and asks a question when it cannot, which is a
+     * far better failure than throwing away a message somebody sent.
+     */
+    date: z.string().trim().min(1).optional(),
+    time: z.string().trim().min(1).optional(),
     followUpKind: z.string().trim().min(1).optional(),
     /** Rupees, as a plain number. "1.75 crore" → 17500000. */
     amount: z.number().nonnegative().optional(),

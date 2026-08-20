@@ -42,6 +42,8 @@ type PendingRow = {
   question: string | null;
   status: string;
   targetEntityId: string | null;
+  /** The message that raised the question, replayed when it is answered. */
+  originalText: string | null;
 };
 
 export async function handleEmployeeMessage(input: {
@@ -221,7 +223,12 @@ export async function handleEmployeeMessage(input: {
     await runBatch({
       ...input,
       reply,
-      // Replay what the confirmation was about, not the word "yes".
+      // Replay what the confirmation was about, not the word "yes" — and that
+      // includes the text. Dates, amounts and note wording are all read from
+      // the message rather than from the model, so replaying "yes" as the
+      // message would throw away the figure the employee actually typed and
+      // fall back to the model's version of it.
+      text: pending.originalText ?? input.text,
       actions: (pending.entities as { batch?: IntentAction[] })?.batch ?? [
         { intent: pending.intent as Intent, entities: pendingEntities(pending) },
       ],
@@ -641,6 +648,7 @@ async function pendingCommand(conversationId: string): Promise<PendingRow | null
       question: whatsappCommandExecutions.resultSummary,
       status: whatsappCommandExecutions.status,
       targetEntityId: whatsappCommandExecutions.targetEntityId,
+      originalText: whatsappCommandExecutions.originalText,
     })
     .from(whatsappCommandExecutions)
     .where(
