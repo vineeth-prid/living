@@ -54,6 +54,16 @@ async function main() {
     "workflowStatus",
   ];
 
+  await check("the instagram link is public on purpose", () => {
+    // It is shown on the listing page, so it has to be in the projection —
+    // pinned here so that being public stays a decision rather than an
+    // accident of adding a column.
+    assert.ok(
+      PUBLIC_PROPERTY_FIELDS.includes("instagramUrl"),
+      "instagramUrl must be in the public projection to render on the site",
+    );
+  });
+
   await check("public property projection excludes every internal field", () => {
     for (const field of FORBIDDEN_PUBLIC_FIELDS) {
       assert.ok(

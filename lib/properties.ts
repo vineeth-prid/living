@@ -35,6 +35,8 @@ export type Property = {
   gallery: string[];
   reference: string | null;
   description: string | null;
+  /** Public: a reel or post for the listing. */
+  instagramUrl: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
   sortOrder: number;
@@ -62,6 +64,7 @@ const publicColumns = {
   gallery: propertiesTable.gallery,
   reference: propertiesTable.reference,
   description: propertiesTable.description,
+  instagramUrl: propertiesTable.instagramUrl,
   seoTitle: propertiesTable.seoTitle,
   seoDescription: propertiesTable.seoDescription,
   sortOrder: propertiesTable.sortOrder,
@@ -155,6 +158,7 @@ function seedFallback(): Property[] {
     gallery: [...p.gallery].map(cdnUrl),
     reference: p.reference ?? null,
     description: p.description ?? null,
+    instagramUrl: null,
     seoTitle: null,
     seoDescription: null,
     sortOrder: p.sortOrder ?? i,
