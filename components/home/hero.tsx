@@ -1,16 +1,31 @@
 "use client";
 
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { ArrowDown } from "lucide-react";
 import { img } from "@/lib/images";
 import { Button } from "@/components/ui";
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
+/**
+ * The hero film, when there is one.
+ *
+ * Deliberately a configurable URL rather than a file in the repo: the Living
+ * shoot lives in the same object storage as every other asset, and hot-linking
+ * somebody else's reel into a production build is not a dependency we are
+ * taking. Unset — local dev, CI, or before the footage lands — and the hero is
+ * the photograph it has always been, which is also what plays if the video
+ * 404s, stalls or the browser refuses to autoplay it.
+ */
+const HERO_VIDEO = process.env.NEXT_PUBLIC_HERO_VIDEO_URL ?? "";
+
 export function Hero() {
   const reduce = useReducedMotion();
   const ref = useRef<HTMLElement>(null);
+  // The still is the floor, not the placeholder: it renders first and stays
+  // rendered, and the film fades over it only once it is genuinely playing.
+  const [playing, setPlaying] = useState(false);
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start start", "end start"],
@@ -22,13 +37,16 @@ export function Hero() {
   const contentOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
   const words = ["Life", "happens", "here."];
+  // Reduced motion gets the photograph. A looping film is exactly the kind of
+  // continuous movement the preference is asking us not to play.
+  const showVideo = Boolean(HERO_VIDEO) && !reduce;
 
   return (
     <section
       ref={ref}
       className="scrim-t scrim-b relative flex min-h-[100svh] items-end overflow-hidden"
     >
-      {/* Background image — slow zoom-in on load, parallax on scroll */}
+      {/* Background — slow zoom-in on load, parallax on scroll */}
       <motion.div
         className="absolute inset-0 -z-0"
         style={reduce ? undefined : { y: imgY, scale: imgScale }}
@@ -42,6 +60,34 @@ export function Hero() {
           transition={{ duration: 2.4, ease: EASE }}
           fetchPriority="high"
         />
+
+        {showVideo && (
+          <video
+            // Decorative: the still underneath carries the same alt text, and
+            // the h1 below carries the meaning. Muted and loud about it —
+            // autoplay is only permitted for silent video, and React does not
+            // reliably emit the attribute, so the ref sets the property too.
+            aria-hidden
+            tabIndex={-1}
+            src={HERO_VIDEO}
+            poster={img.heroArch}
+            autoPlay
+            muted
+            loop
+            playsInline
+            // The still is already painted and already the fallback, so the
+            // film never needs to hold up first render.
+            preload="metadata"
+            ref={(el) => {
+              if (el) el.muted = true;
+            }}
+            onPlaying={() => setPlaying(true)}
+            onError={() => setPlaying(false)}
+            className={`absolute inset-0 h-[112%] w-full object-cover transition-opacity duration-1000 ease-[var(--ease-calm)] ${
+              playing ? "opacity-100" : "opacity-0"
+            }`}
+          />
+        )}
       </motion.div>
 
       {/* Curtain — ivory panel lifts away to reveal the scene */}
@@ -103,9 +149,9 @@ export function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, ease: EASE, delay: 1.7 }}
           >
-            Buy a home in Kochi, sell the one you have, or hand us the running
-            of it while you are away. Fifteen years of ITR Group, in one calm
-            place.
+            Most of what we do begins after the keys change hands. Property,
+            NRI care and community management across Kochi and Kerala — one
+            team, fifteen years in.
           </motion.p>
 
           <motion.div
@@ -115,7 +161,7 @@ export function Hero() {
             transition={{ duration: 0.9, ease: EASE, delay: 1.9 }}
           >
             <Button href="/services" variant="accent">
-              Explore homes
+              Our services
             </Button>
             <Button
               href="/platform"

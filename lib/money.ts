@@ -148,3 +148,21 @@ export function amountFrom(
     ? Math.round(modelAmount)
     : null;
 }
+
+/**
+ * The price as a listing shows it: "₹1.5 Cr", "₹26 L", "₹75 L".
+ *
+ * Same numbers as `formatPrice`, spaced. The CRM shorthand is deliberately
+ * tight ("₹1.75Cr") because it sits in table cells; a property card has room,
+ * and a space is what a buyer reads without stumbling. One formatter over one
+ * stored integer, so no price string is ever hand-written.
+ *
+ * Empty string for null, undefined, NaN and anything at or below zero — the
+ * caller decides what "no price" looks like, and "₹0" is never it.
+ */
+export function formatIndianPropertyPrice(
+  value: number | null | undefined,
+): string {
+  const shorthand = formatPrice(value);
+  return shorthand.replace(/(Cr|L)$/, " $1");
+}

@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Hero } from "@/components/home/hero";
-import { BrandStory } from "@/components/home/story";
-import { Offerings } from "@/components/home/offerings";
+import { Services } from "@/components/home/services";
 import { Listings } from "@/components/property";
 import { CtaBand } from "@/components/cta";
 import { Reveal } from "@/components/motion";
@@ -32,8 +31,7 @@ export default async function HomePage() {
     <>
       <JsonLd data={faqSchema(homeFaqs)} />
       <Hero />
-      <BrandStory />
-      <Offerings />
+      <Services />
 
       {/* Featured homes */}
       <section id="homes" className="bg-page section">

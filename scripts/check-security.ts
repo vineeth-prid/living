@@ -74,7 +74,23 @@ async function main() {
   });
 
   await check("public property projection still carries what pages render", () => {
-    for (const field of ["id", "name", "priceLabel", "gallery", "summary"]) {
+    for (const field of [
+      "id",
+      "name",
+      "priceLabel",
+      "priceValue",
+      "gallery",
+      "summary",
+      // The listing card renders these (§18/§20) and collapses when absent.
+      "hasBuilding",
+      "landArea",
+      "landAreaUnit",
+      "roadAccess",
+      "facing",
+      "builtUpArea",
+      "units",
+      "propertyAge",
+    ]) {
       assert.ok(
         PUBLIC_PROPERTY_FIELDS.includes(field),
         `"${field}" is missing from the public projection`,

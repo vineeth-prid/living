@@ -5,6 +5,7 @@ import {
   amountFrom,
   amountInText,
   formatAmount,
+  formatIndianPropertyPrice,
   formatPrice,
   formatTotal,
   parseAmount,
@@ -219,6 +220,42 @@ check("the confirmation and the write read the figure the same way", () => {
   const written = amountFrom(text, modelGotItWrong);
   assert.equal(quoted, written);
   assert.equal(quoted, 9_200_000, "and both are the employee's figure");
+});
+
+// --- the listing price ----------------------------------------------------
+
+check("a listing price reads as crore and lakh, never as digits", () => {
+  const expected: [number, string][] = [
+    [15_000_000, "₹1.5 Cr"],
+    [2_600_000, "₹26 L"],
+    [12_500_000, "₹1.25 Cr"],
+    [20_000_000, "₹2 Cr"],
+    [7_500_000, "₹75 L"],
+    [85_000_000, "₹8.5 Cr"],
+  ];
+  for (const [value, label] of expected) {
+    assert.equal(formatIndianPropertyPrice(value), label, String(value));
+  }
+});
+
+check("no price is better than a wrong one", () => {
+  // A card drops the line entirely on any of these, rather than printing
+  // "₹0" or "₹NaN" over a real listing.
+  for (const missing of [null, undefined, 0, -1, Number.NaN]) {
+    assert.equal(formatIndianPropertyPrice(missing), "", String(missing));
+  }
+});
+
+check("the shorthand and the listing price are the same number", () => {
+  // Only the space differs. If these ever diverge, the CRM and the website are
+  // quoting two prices for one property.
+  for (const value of [7_500_000, 15_000_000, 12_500_000, 4_200_000]) {
+    assert.equal(
+      formatIndianPropertyPrice(value).replace(" ", ""),
+      formatPrice(value),
+      String(value),
+    );
+  }
 });
 
 check("the new price is shown in the shorthand", () => {
