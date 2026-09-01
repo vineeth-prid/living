@@ -9,16 +9,20 @@ import { Button } from "@/components/ui";
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
 /**
- * The hero film, when there is one.
+ * The hero film.
  *
- * Deliberately a configurable URL rather than a file in the repo: the Living
- * shoot lives in the same object storage as every other asset, and hot-linking
- * somebody else's reel into a production build is not a dependency we are
- * taking. Unset — local dev, CI, or before the footage lands — and the hero is
- * the photograph it has always been, which is also what plays if the video
- * 404s, stalls or the browser refuses to autoplay it.
+ * Ships with licensed placeholder footage in public/videos — the same
+ * arrangement as public/images, and public/videos/SOURCE.txt records where it
+ * came from and on what terms. When the real Living shoot lands, put it in the
+ * bucket and point NEXT_PUBLIC_HERO_VIDEO_URL at it; nothing here changes, and
+ * the app server stops serving a megabyte per visit.
+ *
+ * The photograph underneath is poster, fallback and the entire hero for anyone
+ * who asked for less motion — so a missing file, a 404, a stalled load or a
+ * refused autoplay all look like the site did before there was a video.
  */
-const HERO_VIDEO = process.env.NEXT_PUBLIC_HERO_VIDEO_URL ?? "";
+const HERO_VIDEO =
+  process.env.NEXT_PUBLIC_HERO_VIDEO_URL || "/videos/hero-living.mp4";
 
 export function Hero() {
   const reduce = useReducedMotion();

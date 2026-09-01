@@ -1,0 +1,29 @@
+hero-living.mp4
+
+Source    Mixkit — "Modern living room with wooden furniture"
+          https://mixkit.co/free-stock-video/modern-living-room-with-wooden-furniture-3090/
+Licence   Mixkit Free License (https://mixkit.co/license/) — commercial use
+          permitted, no attribution required. Checked against the per-item
+          licence badge on the clip's page: this one is videoFree, NOT
+          videoRestricted. Verify the badge again before swapping in any other
+          Mixkit clip; plenty of them are Restricted.
+Retrieved 2026-09-01
+
+Edits     Source is 1280x720, 24fps, 10.3s, 3.0 MB, with audio.
+          Shipped as 1280x720, 24fps, 20.5s, 1.04 MB, silent:
+            - played forward then reversed, so the slow dolly loops without a
+              jump cut
+            - gentle warm colour balance toward the Living palette
+            - audio removed entirely (the hero is muted regardless)
+            - H.264 CRF 28, faststart
+
+          ffmpeg -i 3090.mp4 -filter_complex \
+            "[0:v]colorbalance=rs=0.035:gs=0.012:bs=-0.045,\
+             eq=saturation=0.96:contrast=1.02,split[a][b];[b]reverse[r];\
+             [a][r]concat=n=2:v=1:a=0[v]" \
+            -map "[v]" -an -c:v libx264 -crf 28 -preset slow -profile:v high \
+            -pix_fmt yuv420p -movflags +faststart hero-living.mp4
+
+Replacing This is placeholder footage, the same way public/images/ holds
+          placeholder stills. When the real Living shoot exists, put it in the
+          bucket and set NEXT_PUBLIC_HERO_VIDEO_URL — no code change needed.
