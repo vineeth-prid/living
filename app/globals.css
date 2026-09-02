@@ -74,7 +74,7 @@
      past display-hero: it is a name rather than a sentence, so it is read in
      one glance at any size, and it is meant to fill the width of the shell the
      way a masthead does. */
-  --text-display-wordmark: clamp(4rem, 19vw, 17rem);
+  --text-display-wordmark: clamp(4.5rem, 12vw, 11rem);
   --text-display-xl: clamp(2.75rem, 6vw, 4.75rem);
   --text-display-lg: clamp(2.25rem, 4.5vw, 3.5rem);
   /* One step below display-lg, for headings *inside* a section. Without it an

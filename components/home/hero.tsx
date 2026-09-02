@@ -48,7 +48,7 @@ export function Hero() {
     // min-h keeps it sane on a short laptop in landscape.
     <section
       ref={ref}
-      className="scrim-t scrim-b relative flex h-[95svh] min-h-[600px] items-end overflow-hidden"
+      className="scrim-t relative flex h-[95svh] min-h-[600px] items-end overflow-hidden"
     >
       {/* Background — slow zoom-in on load, parallax on scroll */}
       <motion.div
@@ -94,6 +94,12 @@ export function Hero() {
         )}
       </motion.div>
 
+      {/* Legibility, paid for only where it is needed. The stock scrim-b was
+          too weak by the time it reached the copy, which on this footage sits
+          over bright sky and sea. This is stronger and stops at the halfway
+          line, so the house keeps its dusk and the words stay readable. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-[62%] bg-gradient-to-t from-stone-950/90 via-stone-950/55 to-transparent" />
+
       {/* Curtain — ivory panel lifts away to reveal the scene */}
       {!reduce && (
         <motion.div
@@ -107,10 +113,14 @@ export function Hero() {
       {/* Content sits on the floor of the frame — a masthead, not a centred
           title card. Everything is bottom-aligned and close to the edge. */}
       <motion.div
-        className="relative z-10 w-full pb-10 md:pb-12"
+        className="relative z-10 w-full pb-10 md:pb-14"
         style={reduce ? undefined : { y: contentY, opacity: contentOpacity }}
       >
-        <div className="shell">
+        {/* One row, both ends on the floor. Stacking the copy under the
+            wordmark pushed the name into the middle of the frame with dead
+            space beneath it — the wordmark has to sit ON the bottom edge, so
+            everything that explains it goes beside it, not below. */}
+        <div className="shell flex flex-col gap-7 md:flex-row md:items-end md:justify-between md:gap-12">
           {/* The wordmark is the headline. Nothing else is at this size. */}
           <h1 className="font-display text-stone-50 display-wordmark">
             <span className="inline-block overflow-hidden py-[0.02em] align-bottom">
@@ -125,41 +135,33 @@ export function Hero() {
             </span>
           </h1>
 
-          {/* One narrow block under the end of the wordmark, the way the
-              reference hangs its paragraph off the right. The buttons live
-              inside it so the bottom edge stays a single tidy column. */}
+          {/* The narrow column that explains the name. The eyebrow that used
+              to head it is gone: the reference has none in its hero — it is a
+              nav item there — and against bright sky the clay was unreadable.
+              The sentence below already says what category this is. */}
           <motion.div
-            className="mt-4 flex justify-start md:mt-5 md:justify-end"
+            className="max-w-[28rem] md:pb-3"
             initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, ease: EASE, delay: 1.45 }}
           >
-            <div className="max-w-[29rem]">
-              <p className="eyebrow text-clay-200">
-                Property, care and community
-              </p>
-              {/* Two sentences and no more. The first is a specific claim about
-                  how the business actually runs; the second is category, who,
-                  where and how long, in one breath. This is also where the
-                  homepage says Kochi and Kerala, now that the h1 is a name. */}
-              <p className="mt-3 leading-relaxed text-stone-200">
-                The people who hand over the keys are the ones still answering
-                the phone five years later. A property and living company for
-                buyers, sellers and owners across Kochi, Ernakulam and Kerala —
-                the property arm of ITR Group, fifteen years in.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Button href="/services" variant="accent">
-                  Our services
-                </Button>
-                <Button
-                  href="/platform"
-                  variant="ghost"
-                  className="border-stone-50/40 text-stone-50 hover:border-stone-50 hover:text-stone-50"
-                >
-                  See the platform
-                </Button>
-              </div>
+            {/* Two sentences and no more. The first is a specific claim about
+                how the business actually runs; the second is category, who,
+                where and how long, in one breath. This is also where the
+                homepage says Kochi and Kerala, now that the h1 is a name. */}
+            <p className="leading-relaxed text-stone-100">
+              The people who hand over the keys are the ones still answering the
+              phone five years later. A property and living company for buyers,
+              sellers and owners across Kochi, Ernakulam and Kerala — the
+              property arm of ITR Group, fifteen years in.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button href="/services" variant="accent">
+                Our services
+              </Button>
+              <Button href="/platform" variant="onMedia">
+                See the platform
+              </Button>
             </div>
           </motion.div>
         </div>

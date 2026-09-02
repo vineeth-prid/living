@@ -41,7 +41,7 @@ export function Eyebrow({ children }: { children: ReactNode }) {
 type BtnProps = {
   href: string;
   children: ReactNode;
-  variant?: "primary" | "accent" | "ghost" | "quiet";
+  variant?: "primary" | "accent" | "ghost" | "onMedia" | "quiet";
   className?: string;
   external?: boolean;
 };
@@ -62,6 +62,18 @@ export function Button({
       "bg-clay-500 text-pine-950 hover:bg-clay-400 hover:-translate-y-0.5 shadow-soft hover:shadow-lift",
     ghost:
       "border border-stone-300 text-ink hover:border-pine-400 hover:text-pine-700",
+    // The ghost button, for use over photography or video.
+    //
+    // This has to be a variant rather than a className passed to `ghost`.
+    // `text-ink` is a custom utility declared in globals.css's @layer
+    // utilities, which Tailwind emits *after* its generated colour utilities,
+    // so it outranks any text-* a caller hands in — callers were passing
+    // text-stone-50 and silently getting dark teal on a dark image. The only
+    // fix is a variant that never sets text-ink in the first place. The pane
+    // behind it is not decoration either: a bare outline disappears over the
+    // bright half of a photograph.
+    onMedia:
+      "border border-stone-50/60 bg-stone-950/45 text-stone-50 backdrop-blur-sm hover:border-stone-50 hover:bg-stone-950/65",
     quiet: "text-pine-700 hover:text-pine-800 underline-offset-4 hover:underline px-0",
   }[variant];
   const cls = `${base} ${styles} ${className ?? ""}`;
