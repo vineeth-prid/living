@@ -40,7 +40,6 @@ export function Hero() {
   const contentY = useTransform(scrollYProgress, [0, 1], [0, 90]);
   const contentOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
-  const words = ["Life", "happens", "here."];
   // Reduced motion gets the photograph. A looping film is exactly the kind of
   // continuous movement the preference is asking us not to play.
   const showVideo = Boolean(HERO_VIDEO) && !reduce;
@@ -110,52 +109,48 @@ export function Hero() {
         style={reduce ? undefined : { y: contentY, opacity: contentOpacity }}
       >
         <div className="shell">
+          {/* The category, plainly, with no brand in it — the wordmark below
+              says who. */}
           <motion.p
             className="eyebrow text-clay-200"
             initial={reduce ? false : { opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: EASE, delay: 1.0 }}
           >
-            Living · by ITR Group
+            Property, care and community
           </motion.p>
 
+          {/* The wordmark is the headline, not a tagline over it. The name is
+              the only thing at this size; everything that explains it is the
+              line underneath. Real text rather than a decorative span with an
+              sr-only twin, so the h1 a crawler reads is the h1 on screen. */}
           <h1 className="mt-5 font-display text-stone-50 display-hero">
-            <span className="sr-only">Life happens here.</span>
-            <span aria-hidden className="flex flex-wrap gap-x-[0.28em]">
-              {words.map((w, i) => (
-                <span key={w} className="overflow-hidden py-[0.02em]">
-                  <motion.span
-                    className="inline-block"
-                    initial={reduce ? false : { y: "110%" }}
-                    animate={{ y: 0 }}
-                    transition={{
-                      duration: 0.95,
-                      ease: EASE,
-                      delay: 1.15 + i * 0.16,
-                    }}
-                  >
-                    {w === "here." ? (
-                      <>
-                        here<span className="text-clay-400">.</span>
-                      </>
-                    ) : (
-                      w
-                    )}
-                  </motion.span>
-                </span>
-              ))}
+            <span className="inline-block overflow-hidden py-[0.02em] align-bottom">
+              <motion.span
+                className="inline-block"
+                initial={reduce ? false : { y: "110%" }}
+                animate={{ y: 0 }}
+                transition={{ duration: 0.95, ease: EASE, delay: 1.15 }}
+              >
+                Living<span className="text-clay-400">.</span>
+              </motion.span>
             </span>
           </h1>
 
+          {/* Two sentences and no more. The first is a specific claim about
+              how the business actually runs; the second is category, who, where
+              and how long, in one breath. This paragraph is also where the
+              homepage says "Kochi" and "Kerala" now that the h1 is a name. */}
           <motion.p
-            className="mt-7 max-w-xl text-lg leading-relaxed text-stone-200"
+            className="mt-7 max-w-2xl text-lg leading-relaxed text-stone-200"
             initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, ease: EASE, delay: 1.7 }}
           >
-            Most of what we do begins after the keys change hands. Property,
-            NRI care and community management across Kochi and Kerala — one
-            team, fifteen years in.
+            The people who hand over the keys are the ones still answering the
+            phone five years later. A property and living company for buyers,
+            sellers and owners across Kochi, Ernakulam and Kerala — the property
+            arm of ITR Group, fifteen years in.
           </motion.p>
 
           <motion.div
