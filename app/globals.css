@@ -70,6 +70,11 @@
 
   /* Editorial display scale */
   --text-display-hero: clamp(3.5rem, 8vw, 6.5rem);
+  /* The homepage wordmark, and nothing else on the site. Deliberately far
+     past display-hero: it is a name rather than a sentence, so it is read in
+     one glance at any size, and it is meant to fill the width of the shell the
+     way a masthead does. */
+  --text-display-wordmark: clamp(4rem, 19vw, 17rem);
   --text-display-xl: clamp(2.75rem, 6vw, 4.75rem);
   --text-display-lg: clamp(2.25rem, 4.5vw, 3.5rem);
   /* One step below display-lg, for headings *inside* a section. Without it an
@@ -140,6 +145,11 @@ body {
   .display-xl { font-size: var(--text-display-xl); line-height: 1.06; }
   .display-lg { font-size: var(--text-display-lg); line-height: 1.1; }
   .display-md { font-size: var(--text-display-md); line-height: 1.18; }
+  .display-wordmark {
+    font-size: var(--text-display-wordmark);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+  }
 
   /* The one interface size between sm and base. It was written as
      `text-[15px]` in five places; naming it stops the sixth being 14 or 16. */

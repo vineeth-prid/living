@@ -2,32 +2,30 @@
 
 import { motion, useReducedMotion, useScroll, useTransform } from "framer-motion";
 import { useRef, useState } from "react";
-import { ArrowDown } from "lucide-react";
-import { img } from "@/lib/images";
 import { Button } from "@/components/ui";
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
 /**
- * The hero film.
+ * The hero film, and the frame the browser paints before it plays.
  *
- * Ships with licensed placeholder footage in public/videos — the same
- * arrangement as public/images, and public/videos/SOURCE.txt records where it
- * came from and on what terms. When the real Living shoot lands, put it in the
- * bucket and point NEXT_PUBLIC_HERO_VIDEO_URL at it; nothing here changes, and
- * the app server stops serving a megabyte per visit.
+ * The poster is frame 0 of the video itself, so the still and the first frame
+ * are the same picture and the fade between them cannot flicker. Both live in
+ * public/videos; SOURCE.txt beside them records where the footage came from,
+ * how it was cut, and the fact that its licence is still unresolved.
  *
- * The photograph underneath is poster, fallback and the entire hero for anyone
- * who asked for less motion — so a missing file, a 404, a stalled load or a
- * refused autoplay all look like the site did before there was a video.
+ * NEXT_PUBLIC_HERO_VIDEO_URL wins when set — that is how the real Living shoot
+ * arrives from the bucket later, with no code change and a megabyte a visit off
+ * the app server.
  */
 const HERO_VIDEO =
   process.env.NEXT_PUBLIC_HERO_VIDEO_URL || "/videos/hero-living.mp4";
+const HERO_POSTER = "/videos/hero-poster.jpg";
 
 export function Hero() {
   const reduce = useReducedMotion();
   const ref = useRef<HTMLElement>(null);
-  // The still is the floor, not the placeholder: it renders first and stays
+  // The still is the floor, not a placeholder: it renders first and stays
   // rendered, and the film fades over it only once it is genuinely playing.
   const [playing, setPlaying] = useState(false);
   const { scrollYProgress } = useScroll({
@@ -40,14 +38,17 @@ export function Hero() {
   const contentY = useTransform(scrollYProgress, [0, 1], [0, 90]);
   const contentOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
-  // Reduced motion gets the photograph. A looping film is exactly the kind of
+  // Reduced motion gets the still. A looping film is exactly the kind of
   // continuous movement the preference is asking us not to play.
-  const showVideo = Boolean(HERO_VIDEO) && !reduce;
+  const showVideo = !reduce;
 
   return (
+    // 95svh, not 100: the slice of the next section showing under the fold is
+    // what tells the reader to scroll, which is why there is no arrow any more.
+    // min-h keeps it sane on a short laptop in landscape.
     <section
       ref={ref}
-      className="scrim-t scrim-b relative flex min-h-[100svh] items-end overflow-hidden"
+      className="scrim-t scrim-b relative flex h-[95svh] min-h-[600px] items-end overflow-hidden"
     >
       {/* Background — slow zoom-in on load, parallax on scroll */}
       <motion.div
@@ -55,8 +56,8 @@ export function Hero() {
         style={reduce ? undefined : { y: imgY, scale: imgScale }}
       >
         <motion.img
-          src={img.heroArch}
-          alt="A calm, sunlit contemporary home in Kochi at golden hour"
+          src={HERO_POSTER}
+          alt="A contemporary hillside home at dusk, lit from within, above a still pool"
           className="h-[112%] w-full object-cover"
           initial={reduce ? false : { scale: 1.18 }}
           animate={{ scale: 1 }}
@@ -73,7 +74,7 @@ export function Hero() {
             aria-hidden
             tabIndex={-1}
             src={HERO_VIDEO}
-            poster={img.heroArch}
+            poster={HERO_POSTER}
             autoPlay
             muted
             loop
@@ -103,91 +104,65 @@ export function Hero() {
         />
       )}
 
-      {/* Content */}
+      {/* Content sits on the floor of the frame — a masthead, not a centred
+          title card. Everything is bottom-aligned and close to the edge. */}
       <motion.div
-        className="relative z-10 w-full pb-20 md:pb-28"
+        className="relative z-10 w-full pb-10 md:pb-12"
         style={reduce ? undefined : { y: contentY, opacity: contentOpacity }}
       >
         <div className="shell">
-          {/* The category, plainly, with no brand in it — the wordmark below
-              says who. */}
-          <motion.p
-            className="eyebrow text-clay-200"
-            initial={reduce ? false : { opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: EASE, delay: 1.0 }}
-          >
-            Property, care and community
-          </motion.p>
-
-          {/* The wordmark is the headline, not a tagline over it. The name is
-              the only thing at this size; everything that explains it is the
-              line underneath. Real text rather than a decorative span with an
-              sr-only twin, so the h1 a crawler reads is the h1 on screen. */}
-          <h1 className="mt-5 font-display text-stone-50 display-hero">
+          {/* The wordmark is the headline. Nothing else is at this size. */}
+          <h1 className="font-display text-stone-50 display-wordmark">
             <span className="inline-block overflow-hidden py-[0.02em] align-bottom">
               <motion.span
                 className="inline-block"
                 initial={reduce ? false : { y: "110%" }}
                 animate={{ y: 0 }}
-                transition={{ duration: 0.95, ease: EASE, delay: 1.15 }}
+                transition={{ duration: 0.95, ease: EASE, delay: 1.0 }}
               >
                 Living<span className="text-clay-400">.</span>
               </motion.span>
             </span>
           </h1>
 
-          {/* Two sentences and no more. The first is a specific claim about
-              how the business actually runs; the second is category, who, where
-              and how long, in one breath. This paragraph is also where the
-              homepage says "Kochi" and "Kerala" now that the h1 is a name. */}
-          <motion.p
-            className="mt-7 max-w-2xl text-lg leading-relaxed text-stone-200"
-            initial={reduce ? false : { opacity: 0, y: 18 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, ease: EASE, delay: 1.7 }}
-          >
-            The people who hand over the keys are the ones still answering the
-            phone five years later. A property and living company for buyers,
-            sellers and owners across Kochi, Ernakulam and Kerala — the property
-            arm of ITR Group, fifteen years in.
-          </motion.p>
-
+          {/* One narrow block under the end of the wordmark, the way the
+              reference hangs its paragraph off the right. The buttons live
+              inside it so the bottom edge stays a single tidy column. */}
           <motion.div
-            className="mt-9 flex flex-wrap gap-4"
+            className="mt-4 flex justify-start md:mt-5 md:justify-end"
             initial={reduce ? false : { opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.9, ease: EASE, delay: 1.9 }}
+            transition={{ duration: 0.9, ease: EASE, delay: 1.45 }}
           >
-            <Button href="/services" variant="accent">
-              Our services
-            </Button>
-            <Button
-              href="/platform"
-              variant="ghost"
-              className="border-stone-50/40 text-stone-50 hover:border-stone-50 hover:text-stone-50"
-            >
-              See the platform
-            </Button>
+            <div className="max-w-[29rem]">
+              <p className="eyebrow text-clay-200">
+                Property, care and community
+              </p>
+              {/* Two sentences and no more. The first is a specific claim about
+                  how the business actually runs; the second is category, who,
+                  where and how long, in one breath. This is also where the
+                  homepage says Kochi and Kerala, now that the h1 is a name. */}
+              <p className="mt-3 leading-relaxed text-stone-200">
+                The people who hand over the keys are the ones still answering
+                the phone five years later. A property and living company for
+                buyers, sellers and owners across Kochi, Ernakulam and Kerala —
+                the property arm of ITR Group, fifteen years in.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button href="/services" variant="accent">
+                  Our services
+                </Button>
+                <Button
+                  href="/platform"
+                  variant="ghost"
+                  className="border-stone-50/40 text-stone-50 hover:border-stone-50 hover:text-stone-50"
+                >
+                  See the platform
+                </Button>
+              </div>
+            </div>
           </motion.div>
         </div>
-      </motion.div>
-
-      {/* Scroll cue */}
-      <motion.div
-        className="absolute inset-x-0 bottom-7 z-10 flex justify-center"
-        initial={reduce ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1, delay: 2.4 }}
-      >
-        <motion.div
-          className="flex flex-col items-center gap-2 text-stone-300"
-          animate={reduce ? undefined : { y: [0, 8, 0] }}
-          transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
-        >
-          <span className="eyebrow text-stone-300">Scroll</span>
-          <ArrowDown className="h-4 w-4" strokeWidth={1.5} />
-        </motion.div>
       </motion.div>
     </section>
   );
