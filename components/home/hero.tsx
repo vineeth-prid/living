@@ -43,12 +43,13 @@ export function Hero() {
   const showVideo = !reduce;
 
   return (
-    // 95svh, not 100: the slice of the next section showing under the fold is
-    // what tells the reader to scroll, which is why there is no arrow any more.
-    // min-h keeps it sane on a short laptop in landscape.
+    // Full height. It was 95svh so a slice of the next section showed under
+    // the fold as an invitation to scroll, but the next section is white and
+    // the slice read as a stray bar rather than an invitation. min-h keeps it
+    // sane on a short laptop in landscape.
     <section
       ref={ref}
-      className="scrim-t relative flex h-[95svh] min-h-[600px] items-end overflow-hidden"
+      className="scrim-t relative flex h-[100svh] min-h-[600px] items-end overflow-hidden"
     >
       {/* Background — slow zoom-in on load, parallax on scroll */}
       <motion.div

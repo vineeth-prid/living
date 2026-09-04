@@ -57,11 +57,14 @@ const HOME_SERVICES = [
 ];
 
 const index = (i: number) => String(i + 1).padStart(2, "0");
+const LAST = index(HOME_SERVICES.length - 1);
 
 /** The picture for the service currently on stage. */
-function ServiceImages({ active }: { active: number }) {
+function ServiceImages({ active, aspect }: { active: number; aspect: string }) {
   return (
-    <div className="relative aspect-[4/3] overflow-hidden rounded-media shadow-lift">
+    <div
+      className={`relative ${aspect} overflow-hidden rounded-media shadow-lift`}
+    >
       {HOME_SERVICES.map((s, i) => (
         <motion.div
           key={s.key}
@@ -79,20 +82,91 @@ function ServiceImages({ active }: { active: number }) {
           />
         </motion.div>
       ))}
-      {/* Keeps the card below legible where it laps over the photograph. */}
+      {/* Keeps the pane below legible where it laps over the photograph. */}
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-stone-950/45 via-transparent to-transparent" />
     </div>
   );
 }
 
 /**
- * The desktop telling: the section pins, and scrolling walks through the
- * services one at a time.
+ * The words for the service on stage, on a pane that laps over the picture.
+ *
+ * All four are stacked and absolutely placed, so swapping between them cannot
+ * shift the page by a pixel. Inactive panes are inert: no focus, no screen
+ * reader, no way to end up somewhere the scroll has not reached.
+ */
+function ServicePanes({ active, className }: { active: number; className?: string }) {
+  return (
+    <div className={`relative rounded-card glass shadow-float ${className ?? ""}`}>
+      {HOME_SERVICES.map((s, i) => (
+        <motion.div
+          key={s.key}
+          inert={i !== active}
+          className="absolute inset-0 flex flex-col justify-center p-6 md:p-9"
+          initial={false}
+          animate={{ opacity: i === active ? 1 : 0, y: i === active ? 0 : 18 }}
+          transition={{ duration: 0.55, ease: EASE }}
+        >
+          <div className="flex items-center gap-3">
+            <s.icon className="h-6 w-6 text-pine-600" strokeWidth={1.5} />
+            <span className="mono text-xs text-clay-700">{index(i)}</span>
+          </div>
+          <h3 className="mt-3 font-display text-2xl text-ink md:mt-4 md:display-md">
+            {s.label}
+          </h3>
+          <p className="mt-2 max-w-md leading-relaxed text-body md:mt-3">
+            {s.blurb}
+          </p>
+          <span className="mt-4 inline-flex items-center gap-1.5 text-ui font-medium text-pine-700 md:mt-5">
+            Learn more
+            <ArrowUpRight className="h-4 w-4" strokeWidth={1.75} />
+          </span>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+/** The figure that says where you are. */
+function Counter({ active, size }: { active: number; size: "sm" | "lg" }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <motion.span
+        key={active}
+        className={`mono leading-none text-clay-600 ${
+          size === "lg" ? "text-5xl" : "text-3xl"
+        }`}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE }}
+      >
+        {index(active)}
+      </motion.span>
+      <span
+        className={`mono leading-none text-stone-400 ${
+          size === "lg" ? "text-lg" : "text-sm"
+        }`}
+      >
+        / {LAST}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The scroll-driven telling, at every width.
+ *
+ * One scroll container and one active index; only the staging differs. On a
+ * wide screen the index sits in a column beside the stage. On a phone that
+ * column has nowhere to go, so the heading scrolls past above the pinned run
+ * and the pinned panel holds only the stage — a progress bar and a row of
+ * names replace the vertical rail. The alternative, forcing the desktop
+ * two-column layout onto a phone, is what makes pinned sections unusable.
  *
  * The scroll position is read as a motion value and only committed to React
  * state when the *index* changes — four renders across the whole section rather
- * than one per frame. Everything that moves continuously (the progress rail,
- * the crossfades) is transform and opacity, handed to the compositor.
+ * than one per frame. Everything continuous (the rails, the crossfades) is
+ * transform and opacity, handed to the compositor.
  */
 function PinnedServices() {
   const ref = useRef<HTMLDivElement>(null);
@@ -111,125 +185,129 @@ function PinnedServices() {
   });
 
   return (
-    // Tall enough to give each service its own stretch of scroll, and no
-    // taller — a pinned section that outstays its welcome reads as a fault.
-    <div ref={ref} style={{ height: `${HOME_SERVICES.length * 65 + 35}vh` }}>
-      <div className="sticky top-0 flex h-[100svh] items-center overflow-hidden">
-        <div className="shell grid w-full items-center gap-14 lg:grid-cols-[0.8fr_1.2fr]">
-          {/* The index. Every service is a real link here, so the whole
-              section is reachable by keyboard without scrolling through it. */}
-          <div>
-            <Eyebrow>Our services</Eyebrow>
-            <h2 className="mt-5 font-display text-ink display-lg">{HEADING}</h2>
+    <>
+      {/* Phone only: the heading scrolls past normally, so the pinned panel
+          below has to carry the stage and nothing else. */}
+      <div className="shell pt-14 lg:hidden">
+        <Eyebrow>Our services</Eyebrow>
+        <h2 className="mt-4 font-display text-ink display-md">{HEADING}</h2>
+      </div>
 
-            {/* Where you are, as a figure. Cheap to read at a glance and it
-                gives the eye something that visibly changes on scroll. */}
-            <div className="mt-9 flex items-baseline gap-1.5">
-              <motion.span
-                key={active}
-                className="mono text-5xl leading-none text-clay-600"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, ease: EASE }}
-              >
-                {index(active)}
-              </motion.span>
-              <span className="mono text-lg leading-none text-stone-400">
-                / {index(HOME_SERVICES.length - 1)}
-              </span>
-            </div>
+      {/* Tall enough to give each service its own stretch of scroll, and no
+          taller — a pinned section that outstays its welcome reads as a fault. */}
+      <div ref={ref} style={{ height: `${HOME_SERVICES.length * 65 + 35}vh` }}>
+        <div className="sticky top-0 flex h-[100svh] items-center overflow-hidden pt-16 lg:pt-0">
+          <div className="shell w-full">
+            {/* ---------- wide ---------- */}
+            <div className="hidden items-center gap-14 lg:grid lg:grid-cols-[0.8fr_1.2fr]">
+              <div>
+                <Eyebrow>Our services</Eyebrow>
+                <h2 className="mt-5 font-display text-ink display-lg">
+                  {HEADING}
+                </h2>
 
-            <div className="mt-7 flex gap-6">
-              <div className="relative w-px shrink-0 bg-stone-200">
-                <motion.div
-                  className="absolute inset-x-0 top-0 h-full origin-top bg-clay-500"
-                  style={{ scaleY: scrollYProgress }}
+                <div className="mt-9">
+                  <Counter active={active} size="lg" />
+                </div>
+
+                <div className="mt-7 flex gap-6">
+                  <div className="relative w-px shrink-0 bg-stone-200">
+                    <motion.div
+                      className="absolute inset-x-0 top-0 h-full origin-top bg-clay-500"
+                      style={{ scaleY: scrollYProgress }}
+                    />
+                  </div>
+                  <ol className="flex flex-col gap-3.5">
+                    {HOME_SERVICES.map((s, i) => (
+                      <li key={s.key}>
+                        <Link
+                          href={s.href}
+                          className="group flex items-center gap-3 outline-offset-4"
+                        >
+                          {/* A rule that grows into the active row — the
+                              smallest thing that says "this one". */}
+                          <motion.span
+                            aria-hidden
+                            className="h-px bg-clay-500"
+                            initial={false}
+                            animate={{
+                              width: i === active ? 26 : 10,
+                              opacity: i === active ? 1 : 0.3,
+                            }}
+                            transition={{ duration: 0.45, ease: EASE }}
+                          />
+                          <span
+                            className={`text-ui transition-colors duration-500 group-hover:text-pine-700 ${
+                              i === active ? "font-medium text-ink" : "text-muted"
+                            }`}
+                          >
+                            {s.label}
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              </div>
+
+              <div>
+                <ServiceImages active={active} aspect="aspect-[4/3]" />
+                <ServicePanes
+                  active={active}
+                  className="-mt-20 mx-5 min-h-[13rem] md:mx-8"
                 />
               </div>
-              <ol className="flex flex-col gap-3.5">
+            </div>
+
+            {/* ---------- phone ---------- */}
+            <div className="lg:hidden">
+              <div className="flex items-center gap-4">
+                <Counter active={active} size="sm" />
+                <div className="relative h-px flex-1 bg-stone-200">
+                  <motion.div
+                    className="absolute inset-y-0 left-0 w-full origin-left bg-clay-500"
+                    style={{ scaleX: scrollYProgress }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <ServiceImages active={active} aspect="aspect-[16/10]" />
+                <ServicePanes
+                  active={active}
+                  className="-mt-14 mx-4 min-h-[17rem]"
+                />
+              </div>
+
+              {/* Every service stays one tap away, so the pinned run is not the
+                  only route to the other three. */}
+              <ul className="mt-5 flex flex-wrap gap-x-4 gap-y-1.5">
                 {HOME_SERVICES.map((s, i) => (
                   <li key={s.key}>
                     <Link
                       href={s.href}
-                      className="group flex items-center gap-3 outline-offset-4"
+                      className={`text-sm transition-colors duration-500 ${
+                        i === active ? "font-medium text-ink" : "text-muted"
+                      }`}
                     >
-                      {/* A rule that grows into the active row — the smallest
-                          thing that says "this one" without a box. */}
-                      <motion.span
-                        aria-hidden
-                        className="h-px bg-clay-500"
-                        initial={false}
-                        animate={{ width: i === active ? 26 : 10, opacity: i === active ? 1 : 0.3 }}
-                        transition={{ duration: 0.45, ease: EASE }}
-                      />
-                      <span
-                        className={`text-ui transition-colors duration-500 group-hover:text-pine-700 ${
-                          i === active ? "font-medium text-ink" : "text-muted"
-                        }`}
-                      >
-                        {s.label}
-                      </span>
+                      {s.label}
                     </Link>
                   </li>
                 ))}
-              </ol>
-            </div>
-          </div>
-
-          {/* The stage: a photograph that changes, with the words on a pane
-              lapping over its lower edge. All four panes are stacked and
-              absolutely placed, so swapping between them cannot shift the
-              page by a pixel. */}
-          <div>
-            <ServiceImages active={active} />
-
-            <div className="relative -mt-20 mx-5 min-h-[13rem] rounded-card glass shadow-float md:mx-8">
-              {HOME_SERVICES.map((s, i) => (
-                <motion.div
-                  key={s.key}
-                  // Inactive panes are inert: no focus, no screen reader, no
-                  // way to end up somewhere the scroll has not reached.
-                  inert={i !== active}
-                  className="absolute inset-0 flex flex-col justify-center p-7 md:p-9"
-                  initial={false}
-                  animate={{
-                    opacity: i === active ? 1 : 0,
-                    y: i === active ? 0 : 18,
-                  }}
-                  transition={{ duration: 0.55, ease: EASE }}
-                >
-                  <div className="flex items-center gap-3">
-                    <s.icon className="h-6 w-6 text-pine-600" strokeWidth={1.5} />
-                    <span className="mono text-xs text-clay-700">
-                      {index(i)}
-                    </span>
-                  </div>
-                  <h3 className="mt-4 font-display text-ink display-md">
-                    {s.label}
-                  </h3>
-                  <p className="mt-3 max-w-md leading-relaxed text-body">
-                    {s.blurb}
-                  </p>
-                  <span className="mt-5 inline-flex items-center gap-1.5 text-ui font-medium text-pine-700">
-                    Learn more
-                    <ArrowUpRight className="h-4 w-4" strokeWidth={1.75} />
-                  </span>
-                </motion.div>
-              ))}
+              </ul>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
 /**
  * The same four services, told as a list.
  *
- * Mobile and reduced-motion both land here. Pinning a section on a phone means
- * taking over the one gesture the reader has, and the sequence survives fine
- * as a list — the numbering carries what the scroll carried.
+ * Where reduced motion lands. Nothing moves, nothing is pinned, and the
+ * numbering carries what the scroll carried.
  */
 function ListedServices() {
   return (
@@ -290,14 +368,7 @@ export function Services() {
   const reduce = useReducedMotion();
   return (
     <section id="services" className="bg-surface">
-      <div className={reduce ? undefined : "lg:hidden"}>
-        <ListedServices />
-      </div>
-      {!reduce && (
-        <div className="hidden lg:block">
-          <PinnedServices />
-        </div>
-      )}
+      {reduce ? <ListedServices /> : <PinnedServices />}
     </section>
   );
 }
