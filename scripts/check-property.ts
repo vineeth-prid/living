@@ -11,6 +11,21 @@ import assert from "node:assert/strict";
 import { parseCsv, toCsv } from "../lib/csv";
 import { priceLabelFor, propertySchema, seoFor } from "../lib/validation/property";
 import { SERVER_ACTION_BODY_LIMIT, UPLOAD_LIMITS } from "../lib/upload-limits";
+import type { Property } from "../lib/properties";
+import {
+  PROPERTIES_PER_PAGE,
+  currentPage,
+  pageHref,
+  pageSlice,
+  pageWindow,
+  totalPages,
+} from "../lib/pagination";
+import {
+  getPropertyCategory,
+  perCentRateLabel,
+  priceLabel,
+  propertyAttributes,
+} from "../lib/property-attributes";
 import {
   IMPORT_COLUMNS,
   mapHeaders,
@@ -197,7 +212,7 @@ function main() {
     assert.ok(seo.seoTitle.length <= 60, `title too long: ${seo.seoTitle}`);
     assert.ok(seo.seoDescription.length <= 155, "description over 155 chars");
     assert.match(seo.seoTitle, /Arbour/);
-    assert.match(seo.seoDescription, /₹1\.85 Cr/);
+    assert.match(seo.seoDescription, /₹1\.85Cr/);
 
     const rental = seoFor({ ...MINIMAL, listingType: "rental" });
     assert.match(rental.seoTitle, /for rent/);
@@ -278,6 +293,263 @@ function main() {
     assert.deepEqual(unknown, [], "template has a column the importer rejects");
     assert.deepEqual(missing, [], "template omits a required column");
     assert.equal(templateRows().length, 1, "no example row to import by mistake");
+  });
+
+  // --- the listing card (§14-§27) -----------------------------------------
+  //
+  // Every case below is a shape that exists in the database today. The rule
+  // they all pin: an attribute with no value produces no attribute, and a
+  // rate that cannot be computed is simply not shown.
+
+  const listing = (over: Partial<Property> = {}): Property => ({
+    id: "x",
+    name: "X",
+    locality: "Kakkanad",
+    city: "Ernakulam",
+    type: "Plot",
+    priceLabel: "",
+    priceValue: 0,
+    beds: 0,
+    baths: 0,
+    area: "",
+    status: "Ready to move",
+    summary: "",
+    amenities: [],
+    details: [],
+    gallery: [],
+    reference: null,
+    description: null,
+    instagramUrl: null,
+    seoTitle: null,
+    seoDescription: null,
+    sortOrder: 0,
+    updatedAt: new Date(),
+    kind: "residential",
+    commercialKind: null,
+    hasBuilding: true,
+    landArea: null,
+    landAreaUnit: null,
+    roadAccess: null,
+    facing: null,
+    builtUpArea: null,
+    builtUpAreaUnit: null,
+    units: null,
+    balconies: null,
+    propertyAge: null,
+    ...over,
+  });
+  const labels = (p: Property) => propertyAttributes(p).map((a) => a.label);
+
+  const land = listing({
+    hasBuilding: false,
+    priceValue: 15_000_000,
+    landArea: 12,
+    landAreaUnit: "cent",
+    roadAccess: "20 ft tar road",
+    facing: "East",
+  });
+
+  check("land is land because the data says so, not the type string", () => {
+    assert.equal(getPropertyCategory(land), "LAND");
+    assert.equal(getPropertyCategory(listing()), "BUILDING");
+    // A commercial plot is filed as a building row but is still land.
+    assert.equal(
+      getPropertyCategory(listing({ commercialKind: "land" })),
+      "LAND",
+    );
+  });
+
+  check("a plot shows its area, its road and its facing", () => {
+    assert.deepEqual(labels(land), [
+      "12 Cent",
+      "Road access: 20 ft tar road",
+      "Facing: East",
+    ]);
+  });
+
+  check("a plot with only an area shows only an area", () => {
+    const sparse = listing({
+      hasBuilding: false,
+      priceValue: 15_000_000,
+      landArea: 12,
+      landAreaUnit: "cent",
+      // Both blank in the database — one null, one the space somebody typed.
+      roadAccess: null,
+      facing: "   ",
+    });
+    assert.deepEqual(labels(sparse), ["12 Cent"]);
+  });
+
+  check("a plot with nothing measured shows nothing", () => {
+    assert.deepEqual(labels(listing({ hasBuilding: false })), []);
+  });
+
+  check("the per-cent rate is the asking price over the area", () => {
+    // 12 cent at ₹1.5 Cr.
+    assert.equal(perCentRateLabel(land), "₹12.5 L / Cent");
+    // An acre is a hundred cent, so the same money spreads much thinner.
+    assert.equal(
+      perCentRateLabel(
+        listing({
+          hasBuilding: false,
+          priceValue: 15_000_000,
+          landArea: 1,
+          landAreaUnit: "acre",
+        }),
+      ),
+      "₹1.5 L / Cent",
+    );
+    // Square feet convert the other way round — 435.6 of them to the cent —
+    // and getting that direction backwards is a hundredfold error in a price.
+    assert.equal(
+      perCentRateLabel(
+        listing({
+          hasBuilding: false,
+          priceValue: 15_000_000,
+          landArea: 5227.2,
+          landAreaUnit: "sqft",
+        }),
+      ),
+      "₹12.5 L / Cent",
+    );
+  });
+
+  check("a rate that cannot be worked out is not shown", () => {
+    const cases: [string, Partial<Property>][] = [
+      ["no land area", { hasBuilding: false, priceValue: 15_000_000 }],
+      [
+        "no unit",
+        { hasBuilding: false, priceValue: 15_000_000, landArea: 12 },
+      ],
+      [
+        "zero area",
+        {
+          hasBuilding: false,
+          priceValue: 15_000_000,
+          landArea: 0,
+          landAreaUnit: "cent",
+        },
+      ],
+      [
+        "no price",
+        { hasBuilding: false, landArea: 12, landAreaUnit: "cent" },
+      ],
+      [
+        "a building, not a plot",
+        { priceValue: 15_000_000, landArea: 12, landAreaUnit: "cent" },
+      ],
+    ];
+    for (const [name, over] of cases) {
+      assert.equal(perCentRateLabel(listing(over)), null, name);
+    }
+  });
+
+  check("a building shows what it has, in the order that matters", () => {
+    const full = listing({
+      priceValue: 85_000_000,
+      builtUpArea: 2400,
+      builtUpAreaUnit: "sqft",
+      beds: 4,
+      baths: 3,
+      units: 2,
+      balconies: 2,
+      propertyAge: "5 years",
+    });
+    assert.deepEqual(labels(full), [
+      "2,400 Sq Ft",
+      "4 Beds",
+      "3 Baths",
+      "2 Units",
+      "2 Balconies",
+      "5 years",
+    ]);
+    // The card takes the first four; the price is the fifth thing it shows.
+    assert.deepEqual(labels(full).slice(0, 4), [
+      "2,400 Sq Ft",
+      "4 Beds",
+      "3 Baths",
+      "2 Units",
+    ]);
+  });
+
+  check("a half-filled building card collapses instead of padding", () => {
+    const partial = listing({ area: "1,840 sqft", beds: 3, baths: 2 });
+    // No built-up columns yet, so the legacy area text stands in; nothing
+    // renders for units, balconies or age.
+    assert.deepEqual(labels(partial), ["1,840 sqft", "3 Beds", "2 Baths"]);
+    // Zero bedrooms is nothing to say about bedrooms, not "0 Beds".
+    assert.deepEqual(labels(listing({ area: "600 sqft" })), ["600 sqft"]);
+    assert.deepEqual(labels(listing()), []);
+  });
+
+  check("the card price comes from the number, not the stored label", () => {
+    assert.equal(priceLabel(listing({ priceValue: 15_000_000 })), "₹1.5 Cr");
+    assert.equal(priceLabel(listing({ priceValue: 85_000_000 })), "₹8.5 Cr");
+    assert.equal(priceLabel(listing({ priceValue: 12_500_000 })), "₹1.25 Cr");
+    // A stale label loses to a live number.
+    assert.equal(
+      priceLabel(listing({ priceValue: 2_600_000, priceLabel: "₹30L" })),
+      "₹26 L",
+    );
+    // With no number at all the label is the fallback, and then plain words —
+    // never "₹0".
+    assert.equal(priceLabel(listing({ priceLabel: "On request" })), "On request");
+    assert.equal(priceLabel(listing()), "Price on request");
+  });
+
+  // --- paging the listings -------------------------------------------------
+  //
+  // The page number comes off a query string, so it comes from a stranger.
+  // None of these may produce an empty grid.
+
+  check("a page number that is not one resolves to the first page", () => {
+    const pages = totalPages(50);
+    for (const junk of [undefined, "", "abc", "0", "-4", "1.5e9", "NaN"]) {
+      assert.equal(currentPage(junk, pages), 1, JSON.stringify(junk));
+    }
+    // Repeated query keys arrive as an array.
+    assert.equal(currentPage(["3", "9"], pages), 3);
+  });
+
+  check("a page past the end lands on the last page, not on nothing", () => {
+    const pages = totalPages(50);
+    assert.equal(pages, 5);
+    assert.equal(currentPage("99", pages), 5);
+    assert.ok(pageSlice(Array.from({ length: 50 }, (_, i) => i), 5).length > 0);
+  });
+
+  check("every listing appears on exactly one page", () => {
+    const all = Array.from({ length: 50 }, (_, i) => i);
+    const pages = totalPages(all.length);
+    const seen = new Set<number>();
+    for (let p = 1; p <= pages; p++) {
+      for (const item of pageSlice(all, p)) {
+        assert.ok(!seen.has(item), `item ${item} shown twice`);
+        seen.add(item);
+      }
+    }
+    assert.equal(seen.size, all.length, "every listing is reachable");
+    assert.equal(pageSlice(all, 1).length, PROPERTIES_PER_PAGE);
+  });
+
+  check("an empty or short collection is a single page", () => {
+    for (const count of [0, 1, PROPERTIES_PER_PAGE]) {
+      assert.equal(totalPages(count), 1, String(count));
+    }
+    assert.equal(totalPages(PROPERTIES_PER_PAGE + 1), 2);
+  });
+
+  check("the page links stay short however many pages there are", () => {
+    assert.deepEqual(pageWindow(1, 3), [1, 2, 3]);
+    assert.deepEqual(pageWindow(5, 40), [1, "gap", 4, 5, 6, "gap", 40]);
+    assert.deepEqual(pageWindow(1, 40), [1, 2, "gap", 40]);
+    assert.deepEqual(pageWindow(40, 40), [1, "gap", 39, 40]);
+  });
+
+  check("page one keeps the clean URL", () => {
+    // Otherwise /homes and /homes?page=1 are two URLs for one page.
+    assert.equal(pageHref("/homes", 1, "#listings"), "/homes#listings");
+    assert.equal(pageHref("/homes", 2, "#listings"), "/homes?page=2#listings");
   });
 
   console.log(`\n${checks} checks passed`);

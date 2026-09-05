@@ -9,7 +9,7 @@ export function SiteFooter() {
       <div className="shell py-20">
         <div className="grid gap-12 md:grid-cols-[1.4fr_1fr_1fr]">
           <div>
-            <Logo tone="ivory" className="h-11" />
+            <Logo tone="ivory" className="h-13" />
             <p className="mt-6 max-w-sm font-display text-2xl leading-snug text-stone-100">
               Life happens here.
             </p>

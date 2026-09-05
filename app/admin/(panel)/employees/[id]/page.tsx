@@ -30,6 +30,10 @@ export default async function EditEmployeePage({
       employeeCode: users.employeeCode,
       permissions: users.permissions,
       joinedAt: users.joinedAt,
+      whatsappEnabled: users.whatsappEnabled,
+      whatsappCrmEnabled: users.whatsappCrmEnabled,
+      whatsappNumber: users.whatsappNumber,
+      whatsappLastSeenAt: users.whatsappLastSeenAt,
     })
     .from(users)
     .where(eq(users.id, id))

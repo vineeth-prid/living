@@ -1,0 +1,37 @@
+hero-living.mp4  ·  hero-poster.jpg
+
+Source     Taken from the reference site supplied for this work:
+           https://navigate-football-023763.framer.app/
+           asset: framerusercontent.com/assets/EMv4LMcvUuGa6ctOOwKsKdSGRP0.mp4
+Retrieved  2026-09-02, at the client's explicit direction.
+
+LICENCE    UNRESOLVED — READ THIS BEFORE GOING TO PRODUCTION.
+           That page carries no credit, no licence and no attribution for this
+           file. It is an asset uploaded into a third party's Framer project,
+           so we have nothing in writing that says Living may use it. Clear the
+           rights, or replace the file, before this reaches the live domain.
+           It is re-hosted here rather than hot-linked so that nothing on
+           livingbyitr.com depends on someone else's CDN staying up.
+
+           Replacing it is one line: drop a new file in beside this note, or
+           set NEXT_PUBLIC_HERO_VIDEO_URL to footage in the bucket. The hero
+           needs no code change either way, and falls back to the poster if the
+           video is missing.
+
+Edits      Source: 3840x1916, 24fps, 5.04s, 9.41 MB, no audio track.
+           Shipped: 1920x958, 24fps, 10.08s, 1.34 MB.
+             - downscaled 4K to 1920 wide (lanczos); the hero is scrimmed
+               background, not a screening
+             - played forward then reversed, so the slow push loops without a
+               jump cut at five seconds
+             - H.264 CRF 30, faststart, no audio stream
+
+           ffmpeg -i marby-src.mp4 -filter_complex \
+             "[0:v]scale=1920:-2:flags=lanczos,split[a][b];[b]reverse[r];\
+              [a][r]concat=n=2:v=1:a=0[v]" \
+             -map "[v]" -an -c:v libx264 -crf 30 -preset slow -profile:v high \
+             -pix_fmt yuv420p -movflags +faststart hero-living.mp4
+
+           hero-poster.jpg is frame 0 of the same file, so the still the
+           browser paints first and the first frame of the video are the same
+           picture and the fade cannot flicker.

@@ -1,0 +1,1 @@
+ALTER TABLE "properties" ADD COLUMN "instagram_url" text;

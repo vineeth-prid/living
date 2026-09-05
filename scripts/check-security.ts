@@ -54,6 +54,16 @@ async function main() {
     "workflowStatus",
   ];
 
+  await check("the instagram link is public on purpose", () => {
+    // It is shown on the listing page, so it has to be in the projection —
+    // pinned here so that being public stays a decision rather than an
+    // accident of adding a column.
+    assert.ok(
+      PUBLIC_PROPERTY_FIELDS.includes("instagramUrl"),
+      "instagramUrl must be in the public projection to render on the site",
+    );
+  });
+
   await check("public property projection excludes every internal field", () => {
     for (const field of FORBIDDEN_PUBLIC_FIELDS) {
       assert.ok(
@@ -64,7 +74,23 @@ async function main() {
   });
 
   await check("public property projection still carries what pages render", () => {
-    for (const field of ["id", "name", "priceLabel", "gallery", "summary"]) {
+    for (const field of [
+      "id",
+      "name",
+      "priceLabel",
+      "priceValue",
+      "gallery",
+      "summary",
+      // The listing card renders these (§18/§20) and collapses when absent.
+      "hasBuilding",
+      "landArea",
+      "landAreaUnit",
+      "roadAccess",
+      "facing",
+      "builtUpArea",
+      "units",
+      "propertyAge",
+    ]) {
       assert.ok(
         PUBLIC_PROPERTY_FIELDS.includes(field),
         `"${field}" is missing from the public projection`,
@@ -205,8 +231,8 @@ async function main() {
 
   // --- price labels ---------------------------------------------------------
   await check("price labels format to Indian units", () => {
-    assert.equal(priceLabelFor(18500000), "₹1.85 Cr");
-    assert.equal(priceLabelFor(9800000), "₹98 L");
+    assert.equal(priceLabelFor(18500000), "₹1.85Cr");
+    assert.equal(priceLabelFor(9800000), "₹98L");
     assert.equal(priceLabelFor(0), undefined);
     assert.equal(priceLabelFor(undefined), undefined);
   });

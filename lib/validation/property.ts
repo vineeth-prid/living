@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalisePhone } from "@/lib/phone";
+import { formatAmount, parseAmount } from "@/lib/money";
 import {
   AREA_UNITS,
   COMMERCIAL_KINDS,
@@ -34,6 +35,21 @@ const optionalNumber = z
   })
   .refine((v) => v === undefined || Number.isFinite(v), "Enter a number.")
   .refine((v) => v === undefined || v >= 0, "Can't be negative.");
+
+/**
+ * Money, typed the way people type it: "85L", "85 lakh", "8500000",
+ * "₹85,00,000". Kept separate from optionalNumber because a unit suffix means
+ * something here and nothing on a bedroom count.
+ */
+const optionalAmount = z
+  .string()
+  .trim()
+  .optional()
+  // null means "given, and not an amount" — distinct from undefined, which
+  // means "not given". Collapsing them would drop a typo silently.
+  .transform((v) => (v ? (parseAmount(v) ?? null) : undefined))
+  .refine((v) => v !== null, "Enter an amount — 85L, 85 lakh or 8500000.")
+  .transform((v) => v ?? undefined);
 
 const optionalInt = optionalNumber.refine(
   (v) => v === undefined || Number.isInteger(v),
@@ -75,6 +91,22 @@ const optionalPhone = z
  * A `<select>` whose placeholder option is "—" submits "", which no enum
  * accepts. Same shape as optionalText, for enum-backed dropdowns.
  */
+/**
+ * A link. People paste "instagram.com/p/xyz" as often as the full URL, so a
+ * missing scheme is added rather than rejected.
+ */
+const optionalUrl = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) =>
+    v ? (/^https?:\/\//i.test(v) ? v : `https://${v}`) : undefined,
+  )
+  .refine(
+    (v) => v === undefined || /^https?:\/\/[^\s.]+\.[^\s]{2,}$/i.test(v),
+    "Enter a valid link.",
+  );
+
 const optionalEnum = <T extends readonly [string, ...string[]]>(values: T) =>
   z
     .enum(values)
@@ -145,19 +177,20 @@ export const propertySchema = z
     commercialKind: optionalEnum(COMMERCIAL_KINDS),
     floorNumber: optionalText,
     occupancy: optionalText,
+    instagramUrl: optionalUrl,
     suitableFor: optionalText,
     leasePotential: optionalText,
 
     // Financial
-    askingPrice: optionalNumber,
+    askingPrice: optionalAmount,
     priceLabel: optionalText,
     priceUnit: optionalText,
-    rentalIncome: optionalNumber,
+    rentalIncome: optionalAmount,
     rentalFrequency: optionalText,
     rentalYield: optionalNumber,
     // Internal. Whether this is even accepted is checked against the actor's
     // permission in the action — the schema only shapes it.
-    finalPrice: optionalNumber,
+    finalPrice: optionalAmount,
     internalNotes: optionalText,
     sellerName: optionalText,
     sellerContact: optionalText,
@@ -265,13 +298,5 @@ function clamp(text: string, max: number): string {
 /** Formats 18500000 → "₹1.85 Cr", the label the public cards render. */
 export function priceLabelFor(value: number | undefined): string | undefined {
   if (!value || value <= 0) return undefined;
-  if (value >= 10000000) {
-    const cr = value / 10000000;
-    return `₹${cr.toFixed(cr >= 10 ? 0 : 2).replace(/\.00$/, "")} Cr`;
-  }
-  if (value >= 100000) {
-    const l = value / 100000;
-    return `₹${l.toFixed(l >= 10 ? 0 : 1).replace(/\.0$/, "")} L`;
-  }
-  return `₹${value.toLocaleString("en-IN")}`;
+  return `₹${formatAmount(value)}`;
 }

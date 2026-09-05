@@ -12,20 +12,71 @@ import {
   Maximize,
   Check,
   ArrowRight,
+  Route,
+  Compass,
+  Building2,
+  Wind,
+  CalendarDays,
 } from "lucide-react";
 import Image from "next/image";
 import type { Property } from "@/lib/properties";
+import {
+  perCentRateLabel,
+  priceLabel,
+  propertyAttributes,
+  type AttributeKey,
+} from "@/lib/property-attributes";
 import { Button, ContactActions } from "./ui";
 import { Stagger, StaggerItem, LiftCard } from "./motion";
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
 
-function Spec({ icon: Icon, children }: { icon: typeof BedDouble; children: React.ReactNode }) {
+const ATTRIBUTE_ICON: Record<AttributeKey, typeof BedDouble> = {
+  landArea: Maximize,
+  roadAccess: Route,
+  facing: Compass,
+  builtUpArea: Maximize,
+  beds: BedDouble,
+  baths: Bath,
+  units: Building2,
+  balconies: Wind,
+  propertyAge: CalendarDays,
+};
+
+/**
+ * Whatever this property actually has, in one row.
+ *
+ * Land and building listings carry different columns, so the set is derived
+ * (lib/property-attributes) rather than written out as conditional JSX per
+ * field — a new column becomes one new entry there and every card that renders
+ * this picks it up. "limit" is how a compact card and a roomier one share the
+ * component instead of forking it.
+ */
+export function PropertyAttributes({
+  property,
+  limit,
+}: {
+  property: Property;
+  limit?: number;
+}) {
+  const all = propertyAttributes(property);
+  const shown = limit ? all.slice(0, limit) : all;
+  if (shown.length === 0) return null;
   return (
-    <span className="inline-flex items-center gap-1.5 text-sm text-body">
-      <Icon className="h-4 w-4 text-stone-500" strokeWidth={1.6} />
-      {children}
-    </span>
+    <div className="flex flex-wrap gap-x-4 gap-y-2">
+      {shown.map(({ key, label }) => {
+        const Icon = ATTRIBUTE_ICON[key];
+        return (
+          <span
+            key={key}
+            className="inline-flex items-center gap-1.5 text-sm text-body"
+          >
+            <Icon className="h-4 w-4 shrink-0 text-stone-500" strokeWidth={1.6} />
+            {label}
+          </span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -36,6 +87,9 @@ export function PropertyCard({
   property: Property;
   onOpen: () => void;
 }) {
+  // Land only, and only when the area converts — otherwise the line is absent
+  // rather than blank.
+  const rate = perCentRateLabel(property);
   return (
     <LiftCard className="h-full">
       <button
@@ -61,14 +115,22 @@ export function PropertyCard({
           </div>
           <h3 className="mt-2 font-display text-2xl text-ink">{property.name}</h3>
           <p className="mt-1 text-sm text-muted">{property.type}</p>
-          <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2">
-            <Spec icon={BedDouble}>{property.beds} beds</Spec>
-            <Spec icon={Bath}>{property.baths} baths</Spec>
-            <Spec icon={Maximize}>{property.area}</Spec>
+          <div className="mt-5">
+            {/* Four is what fits on one card at 320px without a second row. */}
+            <PropertyAttributes property={property} limit={4} />
           </div>
-          <div className="mt-6 flex items-end justify-between border-t border-hairline pt-5">
-            <span className="mono text-xl text-ink">{property.priceLabel}</span>
-            <span className="text-sm font-medium text-pine-700 transition-colors group-hover:text-clay-600">
+          <div className="mt-6 flex items-end justify-between gap-3 border-t border-hairline pt-5">
+            <span>
+              <span className="mono block text-xl text-ink">
+                {priceLabel(property)}
+              </span>
+              {rate && (
+                <span className="mono mt-0.5 block text-xs text-muted">
+                  {rate}
+                </span>
+              )}
+            </span>
+            <span className="shrink-0 text-sm font-medium text-pine-700 transition-colors group-hover:text-clay-600">
               View home →
             </span>
           </div>
@@ -141,6 +203,7 @@ function PropertyDialog({
   onClose: () => void;
 }) {
   const reduce = useReducedMotion();
+  const rate = perCentRateLabel(property);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -220,7 +283,10 @@ function PropertyDialog({
           <div className="md:sticky md:top-4 md:self-start">
             <div className="rounded-card border border-hairline bg-surface p-6 shadow-soft">
               <p className="text-sm text-muted">Guide price</p>
-              <p className="mono mt-1 text-3xl text-ink">{property.priceLabel}</p>
+              <p className="mono mt-1 text-3xl text-ink">
+                {priceLabel(property)}
+              </p>
+              {rate && <p className="mono mt-1 text-sm text-muted">{rate}</p>}
               <p className="mt-1 text-sm text-muted">{property.area}</p>
               <div className="mt-6 flex flex-col gap-3">
                 <ContactActions message={enquiry} />

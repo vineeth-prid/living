@@ -7,7 +7,9 @@ import {
 import { propertySeed } from "./properties.seed";
 import { cdnUrl, mediaUrl } from "./images";
 
-export type { PropertyDetail, PropertyStatus } from "./db/schema";
+import type { AreaUnit, PropertyKind } from "./db/schema";
+
+export type { PropertyDetail, PropertyStatus, AreaUnit } from "./db/schema";
 
 /**
  * The ONLY property shape the public website ever sees (§41).
@@ -35,8 +37,30 @@ export type Property = {
   gallery: string[];
   reference: string | null;
   description: string | null;
+  /** Public: a reel or post for the listing. */
+  instagramUrl: string | null;
   seoTitle: string | null;
   seoDescription: string | null;
+
+  /**
+   * Physical attributes shown on the listing card (§18/§20). Public on
+   * purpose: an area, a facing and a road are what a buyer asks first, and all
+   * of them already appear in the brochure. The sensitive neighbours of these
+   * columns — surveyNumber, boundaryNotes, addressLine — stay out, and
+   * check-security.ts asserts that they do.
+   */
+  kind: PropertyKind;
+  commercialKind: string | null;
+  hasBuilding: boolean;
+  landArea: number | null;
+  landAreaUnit: AreaUnit | null;
+  roadAccess: string | null;
+  facing: string | null;
+  builtUpArea: number | null;
+  builtUpAreaUnit: AreaUnit | null;
+  units: number | null;
+  balconies: number | null;
+  propertyAge: string | null;
   sortOrder: number;
   updatedAt: Date;
 };
@@ -62,8 +86,21 @@ const publicColumns = {
   gallery: propertiesTable.gallery,
   reference: propertiesTable.reference,
   description: propertiesTable.description,
+  instagramUrl: propertiesTable.instagramUrl,
   seoTitle: propertiesTable.seoTitle,
   seoDescription: propertiesTable.seoDescription,
+  kind: propertiesTable.kind,
+  commercialKind: propertiesTable.commercialKind,
+  hasBuilding: propertiesTable.hasBuilding,
+  landArea: propertiesTable.landArea,
+  landAreaUnit: propertiesTable.landAreaUnit,
+  roadAccess: propertiesTable.roadAccess,
+  facing: propertiesTable.facing,
+  builtUpArea: propertiesTable.builtUpArea,
+  builtUpAreaUnit: propertiesTable.builtUpAreaUnit,
+  units: propertiesTable.units,
+  balconies: propertiesTable.balconies,
+  propertyAge: propertiesTable.propertyAge,
   sortOrder: propertiesTable.sortOrder,
   updatedAt: propertiesTable.updatedAt,
 } as const;
@@ -155,8 +192,21 @@ function seedFallback(): Property[] {
     gallery: [...p.gallery].map(cdnUrl),
     reference: p.reference ?? null,
     description: p.description ?? null,
+    instagramUrl: null,
     seoTitle: null,
     seoDescription: null,
+    kind: p.kind ?? "residential",
+    commercialKind: p.commercialKind ?? null,
+    hasBuilding: p.hasBuilding ?? true,
+    landArea: p.landArea ?? null,
+    landAreaUnit: p.landAreaUnit ?? null,
+    roadAccess: p.roadAccess ?? null,
+    facing: p.facing ?? null,
+    builtUpArea: p.builtUpArea ?? null,
+    builtUpAreaUnit: p.builtUpAreaUnit ?? null,
+    units: p.units ?? null,
+    balconies: p.balconies ?? null,
+    propertyAge: p.propertyAge ?? null,
     sortOrder: p.sortOrder ?? i,
     updatedAt: new Date(),
   }));

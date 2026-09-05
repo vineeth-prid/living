@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { BedDouble, Bath, Maximize, MapPin, Check } from "lucide-react";
+import { BedDouble, Bath, Maximize, MapPin, Check, Instagram } from "lucide-react";
 import { getProperty, getPropertySlugs } from "@/lib/properties";
 import { site, pageMeta } from "@/lib/site";
 import { JsonLd, breadcrumb } from "@/components/schema";
@@ -140,6 +140,17 @@ export default async function PropertyPage({
                   <div className="mt-6 max-w-2xl whitespace-pre-line leading-relaxed text-body">
                     {property.description}
                   </div>
+                )}
+                {property.instagramUrl && (
+                  <a
+                    href={property.instagramUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-6 inline-flex items-center gap-2.5 rounded-full border border-hairline bg-surface px-4 py-2.5 text-sm text-ink shadow-soft transition-colors duration-300 hover:border-clay-300 hover:text-clay-700"
+                  >
+                    <Instagram className="h-4 w-4 text-clay-600" strokeWidth={1.6} />
+                    See this home on Instagram
+                  </a>
                 )}
               </Reveal>
 

@@ -15,7 +15,7 @@ import {
 } from "@/lib/auth/dal";
 import { PERMISSIONS } from "@/lib/auth/constants";
 import { audit, changedFields } from "@/lib/audit";
-import { newId, nextReference, slugify } from "@/lib/ids";
+import { nextReference, slugify } from "@/lib/ids";
 import {
   priceLabelFor,
   propertySchema,
@@ -28,7 +28,8 @@ import {
 } from "@/lib/validation/property-import";
 import { parseCsv } from "@/lib/csv";
 import { latestPropertyReference } from "@/lib/properties.admin";
-import { deleteObject, uploadObject, validateUpload } from "@/lib/storage";
+import { deleteObject, validateUpload } from "@/lib/storage";
+import { attachMedia, filesFrom } from "@/lib/properties.media";
 
 // Public pages are cached; anything that changes what the site shows has to
 // invalidate them or a published listing won't appear until the next deploy.
@@ -50,74 +51,6 @@ function parse(formData: FormData) {
       .map((v) => v.trim())
       .filter(Boolean),
   });
-}
-
-/**
- * Uploads files and writes their property_media rows, appending after whatever
- * is already there. Shared by the media panel and by the create form's own
- * photo picker, so both produce identical rows — sort order, primary flag and
- * the internal-by-default rule for documents included.
- *
- * Returns an error string if any file is rejected; nothing is uploaded in that
- * case, so a bad third file doesn't leave two orphans in the bucket.
- */
-async function attachMedia(
-  propertyId: string,
-  files: File[],
-  kind: (typeof MEDIA_KINDS)[number],
-): Promise<string | null> {
-  if (!files.length) return null;
-
-  for (const file of files) {
-    const error = validateUpload(file, kind);
-    if (error) return error;
-  }
-
-  const [{ maxOrder }] = await db()
-    .select({ maxOrder: sql<number>`coalesce(max(${propertyMedia.sortOrder}), -1)::int` })
-    .from(propertyMedia)
-    .where(eq(propertyMedia.propertyId, propertyId));
-
-  const [{ existing }] = await db()
-    .select({ existing: sql<number>`count(*)::int` })
-    .from(propertyMedia)
-    .where(and(eq(propertyMedia.propertyId, propertyId), eq(propertyMedia.kind, "image")));
-
-  let order = maxOrder;
-  let imageIndex = existing;
-
-  for (const file of files) {
-    // Must stay under /images/: next.config.ts allows the image optimizer to
-    // fetch `${NEXT_PUBLIC_IMAGE_CDN}/images/**` and nothing else. Uploading
-    // anywhere else produces URLs next/image rejects with a 400.
-    const key = await uploadObject(file, `images/properties/${propertyId}`);
-    order += 1;
-    await db()
-      .insert(propertyMedia)
-      .values({
-        id: newId(),
-        propertyId,
-        kind,
-        storageKey: key,
-        // Documents and sketches are internal by default (§10).
-        isPublic: kind === "image" || kind === "floor_plan",
-        isPrimary: kind === "image" && imageIndex === 0,
-        sortOrder: order,
-        sizeBytes: file.size,
-        contentType: file.type,
-      });
-    if (kind === "image") imageIndex += 1;
-  }
-
-  return null;
-}
-
-/** The files a form actually carries, ignoring the empty part an untouched
- *  `<input type="file">` still submits. */
-function filesFrom(formData: FormData): File[] {
-  return formData
-    .getAll("files")
-    .filter((f): f is File => f instanceof File && f.size > 0);
 }
 
 /** Slug collisions get a numeric suffix rather than failing the save. */
@@ -231,6 +164,7 @@ export async function createProperty(
       commercialKind: input.commercialKind,
       floorNumber: input.floorNumber,
       occupancy: input.occupancy,
+      instagramUrl: input.instagramUrl,
       suitableFor: input.suitableFor,
       leasePotential: input.leasePotential,
 
@@ -356,6 +290,7 @@ export async function updateProperty(
       commercialKind: input.commercialKind,
       floorNumber: input.floorNumber,
       occupancy: input.occupancy,
+      instagramUrl: input.instagramUrl,
       suitableFor: input.suitableFor,
       leasePotential: input.leasePotential,
 
@@ -443,6 +378,9 @@ export async function setPublished(
     entity: "property",
     entityId: id,
   });
+
+  // §51. Fire-and-forget, like the email notifications — the listing is live
+  // whether or not the confirmation reaches anyone.
 
   revalidatePath("/admin/properties");
   revalidatePath(`/admin/properties/${id}`);

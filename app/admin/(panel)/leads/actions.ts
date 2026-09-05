@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
@@ -11,7 +11,6 @@ import {
   LEAD_PRIORITIES,
   LEAD_STATUSES,
   leadFollowups,
-  leadNotes,
   leadProperties,
   leads,
   users,
@@ -19,9 +18,14 @@ import {
 } from "@/lib/db/schema";
 import { fail, requireUser, succeed, type ActionResult } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
-import { newId } from "@/lib/ids";
 import { createLead, linkProperty, recordActivity } from "@/lib/leads";
 import { notifyLeadAssigned } from "@/lib/notify";
+import {
+  addLeadNote,
+  scheduleFollowUp,
+  setFollowUpStatus as applyFollowUpStatus,
+  setLeadStatus,
+} from "@/lib/leads.service";
 import { visibleTo } from "@/lib/leads.admin";
 import type { SessionUser } from "@/lib/auth/session";
 
@@ -47,23 +51,6 @@ function touch(id: string) {
   revalidatePath("/admin/leads/pipeline");
   revalidatePath("/admin/followups");
   revalidatePath("/admin/workspace");
-}
-
-/** Recomputes the denormalised next-follow-up marker from pending rows. */
-async function syncNextFollowUp(leadId: string) {
-  const [next] = await db()
-    .select({ dueAt: leadFollowups.dueAt })
-    .from(leadFollowups)
-    .where(
-      and(eq(leadFollowups.leadId, leadId), eq(leadFollowups.status, "pending")),
-    )
-    .orderBy(asc(leadFollowups.dueAt))
-    .limit(1);
-
-  await db()
-    .update(leads)
-    .set({ nextFollowUpAt: next?.dueAt ?? null })
-    .where(eq(leads.id, leadId));
 }
 
 const optionalText = z
@@ -238,33 +225,11 @@ export async function changeStatus(
   if (!before) return fail("That lead no longer exists.");
   if (before.status === status) return succeed(null);
 
-  const closing = status === "closed_won" || status === "closed_lost";
-
-  await db()
-    .update(leads)
-    .set({
-      status,
-      closedAt: closing ? new Date() : null,
-      updatedAt: sql`now()`,
-    })
-    .where(eq(leads.id, id));
-
-  await recordActivity({
+  await setLeadStatus({
     leadId: id,
-    kind: "status",
-    summary: `Status changed from ${before.status.replace(/_/g, " ")} to ${status.replace(/_/g, " ")}`,
-    fromValue: before.status,
-    toValue: status,
+    from: before.status,
+    status,
     actorId: actor.id,
-  });
-
-  await audit({
-    actorId: actor.id,
-    action: "lead.status_changed",
-    entity: "lead",
-    entityId: id,
-    before: { status: before.status },
-    after: { status },
   });
 
   touch(id);
@@ -372,6 +337,12 @@ export async function assignLead(
     });
   }
 
+  // §51: the same event, the other channel. Email stays primary; WhatsApp is
+  // additive and, like the email above, cannot fail an assignment that has
+  // already committed.
+  if (employeeId && employeeId !== before.assignedToId) {
+  }
+
   touch(id);
   return succeed(null);
 }
@@ -395,18 +366,10 @@ export async function addNote(
 
   if (!parsed.success) return fail("Write something first.");
 
-  await db().insert(leadNotes).values({
-    id: newId(),
+  await addLeadNote({
     leadId: id,
     body: parsed.data.body,
     kind: parsed.data.kind,
-    authorId: actor.id,
-  });
-
-  await recordActivity({
-    leadId: id,
-    kind: "note",
-    summary: "Note added",
     actorId: actor.id,
   });
 
@@ -483,24 +446,15 @@ export async function addFollowUp(
       ? input.assignedToId
       : (lead.assignedToId ?? actor.id);
 
-  await db().insert(leadFollowups).values({
-    id: newId(),
+  await scheduleFollowUp({
     leadId: id,
     dueAt,
     kind: input.kind,
-    notes: input.notes ?? null,
+    notes: input.notes,
     assignedToId,
-    createdById: actor.id,
-  });
-
-  await recordActivity({
-    leadId: id,
-    kind: "followup",
-    summary: `${input.kind.replace(/_/g, " ")} scheduled for ${dueAt.toLocaleString("en-IN")}`,
     actorId: actor.id,
   });
 
-  await syncNextFollowUp(id);
   touch(id);
   return succeed(null);
 }
@@ -523,29 +477,14 @@ export async function setFollowUpStatus(
   const lead = await loadWritable(actor, followUp.leadId);
   if (!lead) return fail("That lead no longer exists.");
 
-  await db()
-    .update(leadFollowups)
-    .set({
-      status,
-      completedAt: status === "completed" ? new Date() : null,
-    })
-    .where(eq(leadFollowups.id, followUpId));
-
-  await recordActivity({
+  await applyFollowUpStatus({
+    followUpId,
     leadId: followUp.leadId,
-    kind: "followup",
-    summary: `${followUp.kind.replace(/_/g, " ")} ${status}`,
+    kind: followUp.kind,
+    status,
     actorId: actor.id,
   });
 
-  if (status === "completed") {
-    await db()
-      .update(leads)
-      .set({ lastContactedAt: new Date() })
-      .where(eq(leads.id, followUp.leadId));
-  }
-
-  await syncNextFollowUp(followUp.leadId);
   touch(followUp.leadId);
   return succeed(null);
 }

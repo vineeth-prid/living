@@ -73,9 +73,23 @@ export const nav = [
         blurb: "Valuation, photography, marketing and the closing.",
       },
       {
+        label: "Property management",
+        href: "/services#property-care",
+        blurb: "Inspections, maintenance, utilities and upkeep, year round.",
+      },
+      {
         label: "NRI concierge",
         href: "/services#nri",
-        blurb: "Your property looked after while you are abroad.",
+        blurb: "You looked after while you are abroad — papers, people, plans.",
+      },
+      {
+        // Its own product on its own domain, so this leaves the site. The
+        // `external` flag is what the nav reads to open it in a new tab with
+        // rel=noopener rather than routing it through next/link.
+        label: "Cabs",
+        href: "https://cabs.livingbyitr.com/",
+        blurb: "Airport runs and day hire, booked through Living.",
+        external: true,
       },
     ],
   },
@@ -85,6 +99,16 @@ export const nav = [
 ] as const;
 
 export type NavItem = (typeof nav)[number];
+
+/**
+ * Where staff review a listing that is not on the website.
+ *
+ * Deliberately an admin path: a draft has no public URL and must not be given
+ * one. Anything under /admin is behind the session check, so a link that
+ * leaks goes to a login screen rather than to an unpublished listing.
+ */
+export const adminPropertyUrl = (id: string) =>
+  `${site.url}/admin/properties/${id}`;
 
 export const waLink = (msg?: string) =>
   `https://wa.me/${site.whatsapp}${msg ? `?text=${encodeURIComponent(msg)}` : ""}`;

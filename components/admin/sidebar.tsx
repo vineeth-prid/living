@@ -82,7 +82,10 @@ export function Sidebar({
 
   // /admin/properties stays lit on /admin/properties/[id], but must not also
   // light up while a sibling with its own entry is open.
-  const SIBLINGS = ["/admin/properties/new", "/admin/properties/import"];
+  const SIBLINGS = [
+    "/admin/properties/new",
+    "/admin/properties/import",
+  ];
 
   const isActive = (href: string) =>
     pathname === href ||

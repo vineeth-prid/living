@@ -11,10 +11,12 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
+    "db:refresh-prices": "tsx scripts/refresh-price-labels.ts",
     "check:jsonld": "tsx scripts/check-jsonld.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "check:security": "tsx scripts/check-security.ts",
     "check:property": "tsx scripts/check-property.ts",
+    "check:money": "tsx scripts/check-money.ts",
     "check:quarter": "tsx scripts/check-quarter-end.ts"
   },
   "dependencies": {

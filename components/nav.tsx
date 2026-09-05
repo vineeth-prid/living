@@ -4,11 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Menu, X } from "lucide-react";
+import { ArrowUpRight, ChevronDown, Menu, X } from "lucide-react";
 import { nav } from "@/lib/site";
 import { Logo, Button } from "./ui";
 
 const EASE = [0.22, 0.61, 0.36, 1] as const;
+
+/** Nav children are a union; only some of them leave the site. */
+const isExternal = (child: { href: string }) =>
+  "external" in child && child.external === true;
 
 export function SiteNav() {
   const [scrolled, setScrolled] = useState(false);
@@ -68,7 +72,7 @@ export function SiteNav() {
       }`}
     >
       <nav className="shell flex items-center justify-between">
-        <Logo tone={light ? "ivory" : "color"} priority className="h-8 md:h-9" />
+        <Logo tone={light ? "ivory" : "color"} priority className="h-10 md:h-11" />
 
         <div className="hidden items-center gap-8 md:flex">
           {nav.map((item) => {
@@ -153,21 +157,50 @@ export function SiteNav() {
                       className="absolute left-1/2 top-full w-[19rem] -translate-x-1/2 pt-4"
                     >
                       <div className="overflow-hidden rounded-card border border-hairline bg-surface p-2 shadow-lift">
-                        {children.map((child) => (
-                          <Link
-                            key={child.href}
-                            href={child.href}
-                            onClick={() => setMenu(null)}
-                            className="block rounded-[10px] px-3 py-3 transition-colors hover:bg-stone-100"
-                          >
-                            <span className="block text-ui font-medium text-ink">
-                              {child.label}
-                            </span>
-                            <span className="mt-0.5 block text-sm leading-snug text-muted">
-                              {child.blurb}
-                            </span>
-                          </Link>
-                        ))}
+                        {children.map((child) => {
+                          const body = (
+                            <>
+                              <span className="flex items-center gap-1.5 text-ui font-medium text-ink">
+                                {child.label}
+                                {isExternal(child) && (
+                                  <ArrowUpRight
+                                    className="h-3.5 w-3.5 text-muted"
+                                    strokeWidth={1.75}
+                                  />
+                                )}
+                              </span>
+                              <span className="mt-0.5 block text-sm leading-snug text-muted">
+                                {child.blurb}
+                              </span>
+                            </>
+                          );
+                          const cls =
+                            "block rounded-[10px] px-3 py-3 transition-colors hover:bg-stone-100";
+                          // A different site, so a real anchor rather than a
+                          // client-side route — and noopener, because the tab
+                          // it opens must not get a handle on this one.
+                          return isExternal(child) ? (
+                            <a
+                              key={child.href}
+                              href={child.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => setMenu(null)}
+                              className={cls}
+                            >
+                              {body}
+                            </a>
+                          ) : (
+                            <Link
+                              key={child.href}
+                              href={child.href}
+                              onClick={() => setMenu(null)}
+                              className={cls}
+                            >
+                              {body}
+                            </Link>
+                          );
+                        })}
                       </div>
                     </motion.div>
                   )}
@@ -268,15 +301,31 @@ export function SiteNav() {
                           className="overflow-hidden"
                         >
                           <div className="ml-3 flex flex-col border-l border-hairline pl-3">
-                            {children.map((child) => (
-                              <Link
-                                key={child.href}
-                                href={child.href}
-                                className="rounded-[12px] px-3 py-2.5 text-body hover:bg-stone-100"
-                              >
-                                {child.label}
-                              </Link>
-                            ))}
+                            {children.map((child) =>
+                              isExternal(child) ? (
+                                <a
+                                  key={child.href}
+                                  href={child.href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-[12px] px-3 py-2.5 text-body hover:bg-stone-100"
+                                >
+                                  {child.label}
+                                  <ArrowUpRight
+                                    className="h-3.5 w-3.5 text-muted"
+                                    strokeWidth={1.75}
+                                  />
+                                </a>
+                              ) : (
+                                <Link
+                                  key={child.href}
+                                  href={child.href}
+                                  className="rounded-[12px] px-3 py-2.5 text-body hover:bg-stone-100"
+                                >
+                                  {child.label}
+                                </Link>
+                              ),
+                            )}
                           </div>
                         </motion.div>
                       )}

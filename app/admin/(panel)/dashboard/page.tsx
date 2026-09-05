@@ -46,17 +46,25 @@ export default async function DashboardPage({
     city: sp.city,
   };
 
-  const [leadStats, propertyStats, sources, performance, topProperties, employees, sourceList, cities] =
-    await Promise.all([
-      leadKpis(filters),
-      propertyKpis(),
-      sourceBreakdown(filters),
-      employeePerformance(filters),
-      topPropertiesByInterest(),
-      employeeOptions(),
-      leadSourceOptions(),
-      leadCities(),
-    ]);
+  const [
+    leadStats,
+    propertyStats,
+    sources,
+    performance,
+    topProperties,
+    employees,
+    sourceList,
+    cities,
+  ] = await Promise.all([
+    leadKpis(filters),
+    propertyKpis(),
+    sourceBreakdown(filters),
+    employeePerformance(filters),
+    topPropertiesByInterest(),
+    employeeOptions(),
+    leadSourceOptions(),
+    leadCities(),
+  ]);
 
   const funnel = funnelFrom(leadStats.status);
   const won = leadStats.status.closed_won ?? 0;
