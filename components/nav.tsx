@@ -72,7 +72,7 @@ export function SiteNav() {
       }`}
     >
       <nav className="shell flex items-center justify-between">
-        <Logo tone={light ? "ivory" : "color"} priority className="h-8 md:h-9" />
+        <Logo tone={light ? "ivory" : "color"} priority className="h-10 md:h-11" />
 
         <div className="hidden items-center gap-8 md:flex">
           {nav.map((item) => {

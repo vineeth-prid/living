@@ -97,7 +97,16 @@ export function Pagination({
   );
 }
 
-// The Living wordmark. `tone="ivory"` uses the reversed logo for dark surfaces.
+/**
+ * The Living wordmark. `tone="ivory"` uses the reversed logo for dark surfaces.
+ *
+ * Two files, one intrinsic size. The artwork is the ITR house-and-tree mark
+ * beside the wordmark; the supplied master is a stacked lockup with the
+ * tagline under it, which is a large-format logo — at the 32-36px a header bar
+ * gives it, the wordmark inside a square lockup is about nine pixels tall and
+ * unreadable. So the header and footer carry the horizontal lockup composed
+ * from the same artwork, and the tagline stays with the full-size original.
+ */
 export function Logo({
   tone = "color",
   className,
@@ -112,9 +121,9 @@ export function Logo({
   const img = (
     <Image
       src={tone === "ivory" ? "/logo-light.png" : "/logo.png"}
-      alt="Living — by ITR Groups"
-      width={1337}
-      height={448}
+      alt="Living — by ITR"
+      width={1473}
+      height={380}
       priority={priority}
       className={`w-auto ${className ?? "h-9"}`}
     />
