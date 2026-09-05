@@ -5,7 +5,6 @@ import {
   Users,
   Handshake,
   ClipboardCheck,
-  Home,
   Plane,
   Car,
   FileText,
@@ -68,23 +67,35 @@ const sellingSteps = [
   },
 ];
 
+/**
+ * The upkeep work, which used to sit inside the NRI concierge.
+ *
+ * It was never NRI-only — an owner living in Kakkanad needs the same
+ * inspections and the same bills paid — and burying it under "NRI services"
+ * meant residents never found it. The generic "Property management" tile that
+ * used to head the concierge list is not repeated here: it is the name of the
+ * section now.
+ */
+const propertyCareServices = [
+  { icon: Search, title: "Property inspection" },
+  { icon: Wrench, title: "Property maintenance" },
+  { icon: Receipt, title: "Utility bill payments" },
+  { icon: KeyRound, title: "Home preparation" },
+  { icon: Sofa, title: "Interior refresh" },
+];
+
+/** What is left is about the person, not the building. */
 const nriServices = [
-  { icon: Home, title: "Property management" },
   { icon: Plane, title: "Travel assistance" },
   { icon: Car, title: "Airport pickup" },
   { icon: Car, title: "Transportation" },
   { icon: FileText, title: "Documentation" },
   { icon: Scale, title: "Legal assistance" },
   { icon: Stamp, title: "Power of attorney support" },
-  { icon: Search, title: "Property inspection" },
-  { icon: Wrench, title: "Property maintenance" },
-  { icon: Receipt, title: "Utility bill payments" },
-  { icon: KeyRound, title: "Home preparation" },
   { icon: UserCheck, title: "Daily assistance" },
   { icon: Briefcase, title: "Personal concierge" },
   { icon: HeartPulse, title: "Healthcare coordination" },
   { icon: CalendarDays, title: "Event management" },
-  { icon: Sofa, title: "Interior refresh" },
   { icon: ClipboardCheck, title: "Local representation" },
   { icon: ShieldAlert, title: "Emergency support" },
 ];
@@ -203,6 +214,57 @@ export default async function ServicesPage() {
       </section>
 
       {/* NRI SERVICES */}
+      <section id="property-care" className="scroll-mt-12 bg-page section">
+        <div className="shell">
+          <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-12">
+            <Reveal>
+              <Eyebrow>Property management</Eyebrow>
+              <h2 className="mt-5 font-display text-ink display-lg">
+                Someone looking after it, whether or not you are here.
+              </h2>
+              <p className="mt-6 text-lg leading-relaxed text-body">
+                Inspections on a schedule, repairs before they become
+                expensive, bills paid on time and a report you can actually
+                read. The same care whether the house is empty, let, or the one
+                you live in.
+              </p>
+            </Reveal>
+            <Reveal delay={0.1}>
+              <ZoomImage
+                src={img.storyLiving}
+                alt="A warm, well-kept living room in daylight"
+                className="aspect-[4/3] w-full rounded-media shadow-float"
+              />
+            </Reveal>
+          </div>
+
+          <Stagger className="mt-12 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {propertyCareServices.map((s) => (
+              <StaggerItem key={s.title}>
+                <div className="flex h-full flex-col gap-3 rounded-card border border-hairline bg-surface p-5 shadow-soft transition-colors duration-300 hover:border-clay-400">
+                  <s.icon className="h-6 w-6 text-pine-600" strokeWidth={1.5} />
+                  <span className="text-sm leading-snug text-body">
+                    {s.title}
+                  </span>
+                </div>
+              </StaggerItem>
+            ))}
+          </Stagger>
+
+          <Reveal className="mt-14">
+            <Button
+              href={waLink(
+                "Hello Living, I'd like to talk about managing my property.",
+              )}
+              variant="accent"
+              external
+            >
+              Talk about managing a property
+            </Button>
+          </Reveal>
+        </div>
+      </section>
+
       <section id="nri" className="scroll-mt-12 bg-pine-50 section">
         <div className="shell">
           <div className="grid gap-12 md:grid-cols-2 md:items-center md:gap-12">
@@ -212,9 +274,10 @@ export default async function ServicesPage() {
                 Your home in Kerala, in trusted hands.
               </h2>
               <p className="mt-6 text-lg leading-relaxed text-body">
-                A luxury concierge for NRIs — the quiet reassurance that your
-                home, your paperwork and your family are looked after while
-                you're away. One point of contact for everything.
+                A luxury concierge for NRIs — your paperwork, your travel and
+                your family looked after while you&rsquo;re away, with the
+                upkeep of the house itself handled by property management
+                above. One point of contact for both.
               </p>
             </Reveal>
             <Reveal delay={0.1}>

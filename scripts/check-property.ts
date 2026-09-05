@@ -13,6 +13,14 @@ import { priceLabelFor, propertySchema, seoFor } from "../lib/validation/propert
 import { SERVER_ACTION_BODY_LIMIT, UPLOAD_LIMITS } from "../lib/upload-limits";
 import type { Property } from "../lib/properties";
 import {
+  PROPERTIES_PER_PAGE,
+  currentPage,
+  pageHref,
+  pageSlice,
+  pageWindow,
+  totalPages,
+} from "../lib/pagination";
+import {
   getPropertyCategory,
   perCentRateLabel,
   priceLabel,
@@ -487,6 +495,61 @@ function main() {
     // never "₹0".
     assert.equal(priceLabel(listing({ priceLabel: "On request" })), "On request");
     assert.equal(priceLabel(listing()), "Price on request");
+  });
+
+  // --- paging the listings -------------------------------------------------
+  //
+  // The page number comes off a query string, so it comes from a stranger.
+  // None of these may produce an empty grid.
+
+  check("a page number that is not one resolves to the first page", () => {
+    const pages = totalPages(50);
+    for (const junk of [undefined, "", "abc", "0", "-4", "1.5e9", "NaN"]) {
+      assert.equal(currentPage(junk, pages), 1, JSON.stringify(junk));
+    }
+    // Repeated query keys arrive as an array.
+    assert.equal(currentPage(["3", "9"], pages), 3);
+  });
+
+  check("a page past the end lands on the last page, not on nothing", () => {
+    const pages = totalPages(50);
+    assert.equal(pages, 5);
+    assert.equal(currentPage("99", pages), 5);
+    assert.ok(pageSlice(Array.from({ length: 50 }, (_, i) => i), 5).length > 0);
+  });
+
+  check("every listing appears on exactly one page", () => {
+    const all = Array.from({ length: 50 }, (_, i) => i);
+    const pages = totalPages(all.length);
+    const seen = new Set<number>();
+    for (let p = 1; p <= pages; p++) {
+      for (const item of pageSlice(all, p)) {
+        assert.ok(!seen.has(item), `item ${item} shown twice`);
+        seen.add(item);
+      }
+    }
+    assert.equal(seen.size, all.length, "every listing is reachable");
+    assert.equal(pageSlice(all, 1).length, PROPERTIES_PER_PAGE);
+  });
+
+  check("an empty or short collection is a single page", () => {
+    for (const count of [0, 1, PROPERTIES_PER_PAGE]) {
+      assert.equal(totalPages(count), 1, String(count));
+    }
+    assert.equal(totalPages(PROPERTIES_PER_PAGE + 1), 2);
+  });
+
+  check("the page links stay short however many pages there are", () => {
+    assert.deepEqual(pageWindow(1, 3), [1, 2, 3]);
+    assert.deepEqual(pageWindow(5, 40), [1, "gap", 4, 5, 6, "gap", 40]);
+    assert.deepEqual(pageWindow(1, 40), [1, 2, "gap", 40]);
+    assert.deepEqual(pageWindow(40, 40), [1, "gap", 39, 40]);
+  });
+
+  check("page one keeps the clean URL", () => {
+    // Otherwise /homes and /homes?page=1 are two URLs for one page.
+    assert.equal(pageHref("/homes", 1, "#listings"), "/homes#listings");
+    assert.equal(pageHref("/homes", 2, "#listings"), "/homes?page=2#listings");
   });
 
   console.log(`\n${checks} checks passed`);

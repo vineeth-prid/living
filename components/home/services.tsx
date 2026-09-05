@@ -22,13 +22,12 @@ const HEADING = "Everything a home needs, in one considered place.";
 /**
  * What the homepage shows, and the picture that goes with each one.
  *
- * Four, not the full six. Property management and community & facility
- * management say the same thing to a first-time reader — we look after the
- * building after you move in — and reading it twice on the way down the page
- * made the list feel padded rather than complete. Both keep their place in the
- * nav and on /services, where there is room to draw the distinction properly,
- * so nothing is lost from the taxonomy: this is a homepage edit, not a change
- * to what Living sells.
+ * Five of the six. Property management is its own line on the homepage now
+ * that it has its own section on /services and the upkeep work has moved into
+ * it out of the NRI concierge. Community & facility management stays off: at
+ * this altitude it reads as the same promise as property management, and it is
+ * one click away in the nav and on /services, where there is room to draw the
+ * distinction properly.
  *
  * Imagery is a presentation concern and lives here rather than in lib/services,
  * which the nav and the services hub also read.
@@ -43,6 +42,11 @@ const HOME_SERVICES = [
     ...serviceByKey("selling"),
     image: img.selling,
     alt: "A bright, styled interior prepared for viewings",
+  },
+  {
+    ...serviceByKey("property-care"),
+    image: img.storyLiving,
+    alt: "A warm, well-kept living room in daylight",
   },
   {
     ...serviceByKey("nri"),

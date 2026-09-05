@@ -1,8 +1,101 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Phone, MessageCircle } from "lucide-react";
+import { Phone, MessageCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { telLink, waLink, site } from "@/lib/site";
+import { pageHref, pageWindow } from "@/lib/pagination";
 import type { ReactNode } from "react";
+
+/**
+ * Page links for a long list.
+ *
+ * Plain anchors, rendered on the server: paging a property list should survive
+ * a crawler, a middle-click and a JavaScript failure, none of which a click
+ * handler would. Renders nothing at all when there is only one page.
+ */
+export function Pagination({
+  page,
+  pages,
+  basePath,
+  anchor = "",
+  label = "Listings",
+}: {
+  page: number;
+  pages: number;
+  basePath: string;
+  anchor?: string;
+  label?: string;
+}) {
+  if (pages <= 1) return null;
+  const step =
+    "inline-flex h-10 min-w-10 items-center justify-center rounded-[10px] px-3 text-ui transition-colors";
+
+  return (
+    <nav
+      aria-label={`${label} pagination`}
+      className="mt-12 flex flex-wrap items-center justify-center gap-2"
+    >
+      {page > 1 ? (
+        <Link
+          href={pageHref(basePath, page - 1, anchor)}
+          rel="prev"
+          aria-label="Previous page"
+          className={`${step} border border-stone-300 text-ink hover:border-pine-400 hover:text-pine-700`}
+        >
+          <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+        </Link>
+      ) : (
+        <span
+          aria-hidden
+          className={`${step} border border-hairline text-stone-300`}
+        >
+          <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
+        </span>
+      )}
+
+      {pageWindow(page, pages).map((entry, i) =>
+        entry === "gap" ? (
+          <span key={`gap-${i}`} className="px-1 text-muted">
+            &hellip;
+          </span>
+        ) : entry === page ? (
+          <span
+            key={entry}
+            aria-current="page"
+            className={`${step} mono bg-pine-700 font-medium text-stone-50`}
+          >
+            {entry}
+          </span>
+        ) : (
+          <Link
+            key={entry}
+            href={pageHref(basePath, entry, anchor)}
+            className={`${step} mono border border-stone-300 text-ink hover:border-pine-400 hover:text-pine-700`}
+          >
+            {entry}
+          </Link>
+        ),
+      )}
+
+      {page < pages ? (
+        <Link
+          href={pageHref(basePath, page + 1, anchor)}
+          rel="next"
+          aria-label="Next page"
+          className={`${step} border border-stone-300 text-ink hover:border-pine-400 hover:text-pine-700`}
+        >
+          <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+        </Link>
+      ) : (
+        <span
+          aria-hidden
+          className={`${step} border border-hairline text-stone-300`}
+        >
+          <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
+        </span>
+      )}
+    </nav>
+  );
+}
 
 // The Living wordmark. `tone="ivory"` uses the reversed logo for dark surfaces.
 export function Logo({

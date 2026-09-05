@@ -73,9 +73,23 @@ export const nav = [
         blurb: "Valuation, photography, marketing and the closing.",
       },
       {
+        label: "Property management",
+        href: "/services#property-care",
+        blurb: "Inspections, maintenance, utilities and upkeep, year round.",
+      },
+      {
         label: "NRI concierge",
         href: "/services#nri",
-        blurb: "Your property looked after while you are abroad.",
+        blurb: "You looked after while you are abroad — papers, people, plans.",
+      },
+      {
+        // Its own product on its own domain, so this leaves the site. The
+        // `external` flag is what the nav reads to open it in a new tab with
+        // rel=noopener rather than routing it through next/link.
+        label: "Cabs",
+        href: "https://cabs.livingbyitr.com/",
+        blurb: "Airport runs and day hire, booked through Living.",
+        external: true,
       },
     ],
   },
