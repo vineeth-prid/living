@@ -1,5 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
+// Imported rather than referenced by path on purpose. A string src keeps the
+// same /_next/image?url=%2Flogo.png URL forever, so swapping the artwork
+// changed nothing for anyone holding the four-hour cached copy — which is
+// exactly what happened the first time this logo was replaced. A static import
+// puts a content hash in the URL, so the next change to these files busts every
+// cache on its own.
+import logoColour from "@/public/logo.png";
+import logoIvory from "@/public/logo-light.png";
 import { Phone, MessageCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { telLink, waLink, site } from "@/lib/site";
 import { pageHref, pageWindow } from "@/lib/pagination";
@@ -100,7 +108,7 @@ export function Pagination({
 /**
  * The Living wordmark. `tone="ivory"` uses the reversed logo for dark surfaces.
  *
- * Two files, one intrinsic size. The artwork is the ITR house-and-tree mark
+ * Two files. The artwork is the ITR house-and-tree mark
  * beside the wordmark; the supplied master is a stacked lockup with the
  * tagline under it, which is a large-format logo — at the 32-36px a header bar
  * gives it, the wordmark inside a square lockup is about nine pixels tall and
@@ -120,10 +128,10 @@ export function Logo({
 }) {
   const img = (
     <Image
-      src={tone === "ivory" ? "/logo-light.png" : "/logo.png"}
+      src={tone === "ivory" ? logoIvory : logoColour}
       alt="Living — by ITR"
-      width={1473}
-      height={380}
+      // Intrinsic size comes from the file itself now, so it cannot drift out
+      // of step with the artwork the way a hand-written pair can.
       priority={priority}
       className={`w-auto ${className ?? "h-9"}`}
     />
