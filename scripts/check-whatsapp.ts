@@ -18,6 +18,7 @@ import {
 } from "../lib/integrations/whatsapp/openwa/webhook";
 import { maskPhone, normalisePhone } from "../lib/integrations/whatsapp/phone";
 import { INTENTS, parseIntentJson } from "../lib/ai/crm-intent/schema";
+import { answerFor, matchCommand } from "../lib/crm/whatsapp/commands";
 import {
   COMMANDS,
   helpFor,
@@ -1795,6 +1796,85 @@ async function main() {
     assert.equal(normaliseIsoDate("2026-08-21"), "2026-08-21");
     assert.equal(normaliseIsoDate("21-08-2026"), null, "not an ISO date");
     assert.equal(normaliseIsoDate("soon"), null);
+  });
+
+
+  // --- the five reported from staging -------------------------------------
+  //
+  // Four of them were one message coming back as the wrong thing. These shapes
+  // are not ambiguous English, so they are read rather than classified, and
+  // these pin that they stay read.
+
+  check("the rigid commands are understood without a model", () => {
+    const cases: [string, string, Record<string, string>][] = [
+      ["Add photos to LIV-0010", "ADD_PROPERTY_MEDIA", { propertyReference: "LIV-0010" }],
+      ["add photos to liv 10", "ADD_PROPERTY_MEDIA", { propertyReference: "LIV-0010" }],
+      ["Add lead Raj 9876543210", "CREATE_LEAD", { leadName: "Raj", mobile: "9876543210" }],
+      ["add lead Rajesh Pillai +91 98765 43210", "CREATE_LEAD", { leadName: "Rajesh Pillai", mobile: "9876543210" }],
+      ["Show me Rajesh Pillai", "GET_LEAD", { leadName: "Rajesh Pillai" }],
+      ["lead Raj", "GET_LEAD", { leadName: "Raj" }],
+      ["publish LIV-0010", "PUBLISH_PROPERTY", { propertyReference: "LIV-0010" }],
+      ["LIV-0010", "GET_PROPERTY", { propertyReference: "LIV-0010" }],
+      ["help", "HELP", {}],
+    ];
+    for (const [text, intent, entities] of cases) {
+      const found = matchCommand(text);
+      assert.ok(found, `"${text}" was not understood`);
+      assert.equal(found.intent, intent, `"${text}"`);
+      assert.deepEqual(found.entities, entities, `"${text}"`);
+    }
+  });
+
+  check("a sentence is still the model's to interpret", () => {
+    // Matching these would be worse than asking: each is either a real
+    // sentence, or a command whose object is a set rather than a person.
+    for (const text of [
+      "show my leads",
+      "show me my hot leads",
+      "show my followups",
+      "show all properties",
+      "Raj called this morning, wants a villa under 90L",
+      "move tomorrow's call to Friday",
+      "what's the status of the Kakkanad villa",
+      "",
+    ]) {
+      assert.equal(matchCommand(text), null, `"${text}" should go to the model`);
+    }
+  });
+
+  check("a one-word answer resolves the question it was asked", () => {
+    // "Which day?" → "today" came back from the model labelled CONFIRM with no
+    // entities, so the parked command was still missing its date and asked
+    // again. The field being waited on is known, so the reply is read for it.
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    assert.equal(answerFor("date", "today"), today);
+    assert.equal(answerFor("propertyReference", "LIV-0010"), "LIV-0010");
+    assert.equal(answerFor("propertyReference", "liv 10"), "LIV-0010");
+    assert.equal(answerFor("leadName", "Rajesh Pillai"), "Rajesh Pillai");
+    assert.equal(answerFor("mobile", "+91 98765 43210"), "9876543210");
+    // Nothing usable is still nothing — the question gets asked again rather
+    // than answered with a guess.
+    assert.equal(answerFor("leadName", "not sure yet, ask him"), null);
+    assert.equal(answerFor("propertyReference", "the Kakkanad one"), null);
+  });
+
+  check("a follow-up typed in the panel is Kochi time, not the server's", () => {
+    // The bug: new Date("2026-09-11T14:00") is the *server's* 2pm. On a UTC
+    // host that is 14:00Z, which a reader in Kochi sees as 7:30pm.
+    const due = zonedDateTime("2026-09-11", "14:00");
+    assert.ok(due, "2pm should resolve");
+    assert.equal(due.toISOString(), "2026-09-11T08:30:00.000Z");
+    const shown = new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(due);
+    assert.match(shown, /2:00\s*pm/i, `booked 2pm, shows "${shown}"`);
   });
 
 

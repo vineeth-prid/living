@@ -7,6 +7,7 @@ import {
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { parseIntent } from "@/lib/ai/crm-intent/parser";
+import { answerFor, matchCommand } from "./commands";
 import type { Entities, Intent, IntentAction } from "@/lib/ai/crm-intent/schema";
 import { CONFIDENCE, PENDING_COMMAND_TTL_MS } from "@/lib/integrations/whatsapp/config";
 import { sendText } from "@/lib/integrations/whatsapp/service";
@@ -178,6 +179,27 @@ export async function handleEmployeeMessage(input: {
     }
   }
 
+  // §55c. The rigid commands are read here rather than asked about.
+  //
+  // Only when nothing is in flight: a reply to "which day?" is the missing
+  // half of a command already running, and matching it as a fresh one would
+  // throw the first half away.
+  if (!pending) {
+    const direct = matchCommand(text);
+    if (direct) {
+      await runBatch({
+        ...input,
+        reply,
+        actions: [{ intent: direct.intent, entities: direct.entities }],
+        // Read, not inferred. There is nothing here for a confidence band to
+        // hedge against.
+        confidence: 1,
+        model: "pattern",
+      });
+      return;
+    }
+  }
+
   const parsed = await parseIntent({
     text,
     employeeName: input.user.fullName,
@@ -214,7 +236,13 @@ export async function handleEmployeeMessage(input: {
     return;
   }
 
-  if (first.intent === "CONFIRM") {
+  // "today" answering "Which day?" came back from the model as CONFIRM, and
+  // this branch then replied "there's nothing waiting for a yes or no" and
+  // dropped the question on the floor. A clarification in flight outranks the
+  // classifier's reading: the message is the answer, whatever it was labelled.
+  const answeringQuestion = pending?.status === "awaiting_clarification";
+
+  if (first.intent === "CONFIRM" && !answeringQuestion) {
     if (!pending || pending.status !== "awaiting_confirmation") {
       await reply(t.nothingPending());
       return;
@@ -242,8 +270,17 @@ export async function handleEmployeeMessage(input: {
   // §55/§56/§57. A reply to "which OMR property?" is not a new command — it is
   // the missing half of the one already in flight. Merging rather than
   // restarting is what makes "27" a usable answer.
-  if (pending?.status === "awaiting_clarification") {
-    const merged = { ...pendingEntities(pending), ...first.entities };
+  if (answeringQuestion && pending) {
+    const merged: Entities = { ...pendingEntities(pending), ...first.entities };
+
+    // The model can label a one-word answer as almost anything and hand back no
+    // entities with it. Whatever the parked command is still missing, read it
+    // out of the reply — otherwise the same question comes round again and the
+    // employee is stuck in it.
+    for (const field of missingFields(pending.intent as Intent, merged)) {
+      const answer = answerFor(field, text);
+      if (answer !== null) (merged as Record<string, unknown>)[field] = answer;
+    }
     await closePending(pending.id, "executed");
     await runBatch({
       ...input,
