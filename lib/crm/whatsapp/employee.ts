@@ -7,7 +7,7 @@ import {
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { parseIntent } from "@/lib/ai/crm-intent/parser";
-import { answerFor, matchCommand } from "./commands";
+import { answerFor, confirmationAnswer, matchCommand } from "./commands";
 import type { Entities, Intent, IntentAction } from "@/lib/ai/crm-intent/schema";
 import { CONFIDENCE, PENDING_COMMAND_TTL_MS } from "@/lib/integrations/whatsapp/config";
 import { sendText } from "@/lib/integrations/whatsapp/service";
@@ -175,6 +175,39 @@ export async function handleEmployeeMessage(input: {
         summary: `${photos} photo(s), preview sent`,
       });
       await reply(reply_);
+      return;
+    }
+  }
+
+  // §55d. The answer to a confirmation is never classified.
+  //
+  // "Reply *yes* to go ahead, or *no* to stop" is what the CRM asks for, and
+  // then it put that one word through the model — so a publish somebody had
+  // already agreed to died on whether a 3B chose CONFIRM. Only while a
+  // confirmation is outstanding: elsewhere "no" is an ordinary word, and a
+  // perfectly good answer to "road access?".
+  if (pending?.status === "awaiting_confirmation") {
+    const answer = confirmationAnswer(text);
+    if (answer === "no") {
+      await closePending(pending.id, "cancelled");
+      await reply(t.cancelled());
+      return;
+    }
+    if (answer === "yes") {
+      await closePending(pending.id, "executed");
+      await runBatch({
+        ...input,
+        reply,
+        // Replay what was agreed to, not the word "yes" — the figures and dates
+        // are read from the original message, not from the model.
+        text: pending.originalText ?? input.text,
+        actions: (pending.entities as { batch?: IntentAction[] })?.batch ?? [
+          { intent: pending.intent as Intent, entities: pendingEntities(pending) },
+        ],
+        confidence: 1,
+        model: "pattern",
+        alreadyConfirmed: true,
+      });
       return;
     }
   }

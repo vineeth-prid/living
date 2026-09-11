@@ -19,7 +19,7 @@ import {
 import { maskPhone, normalisePhone } from "../lib/integrations/whatsapp/phone";
 import { INTENTS, parseIntentJson } from "../lib/ai/crm-intent/schema";
 import type { Intent } from "../lib/ai/crm-intent/schema";
-import { answerFor, matchCommand } from "../lib/crm/whatsapp/commands";
+import { answerFor, confirmationAnswer, matchCommand } from "../lib/crm/whatsapp/commands";
 import {
   COMMANDS,
   helpFor,
@@ -1876,6 +1876,42 @@ async function main() {
     const covered = new Set(cases.map(([, intent]) => intent));
     const uncovered = advertised.filter((intent) => !covered.has(intent as Intent));
     assert.deepEqual(uncovered, [], "HELP advertises a command with no pattern");
+  });
+
+  check("yes and no are read, not classified", () => {
+    // The CRM says "Reply *yes* to go ahead, or *no* to stop" and then put that
+    // word through the model. Publish and unpublish both require confirmation,
+    // so a model that answered "yes" with anything but CONFIRM dropped a
+    // publish somebody had already agreed to.
+    for (const yes of ["yes", "Yes", "y", "yep", "ok", "OK", "sure", "go ahead", "do it", "confirm", "👍"]) {
+      assert.equal(confirmationAnswer(yes), "yes", yes);
+    }
+    for (const no of ["no", "No", "n", "nope", "cancel", "stop", "don't", "never mind", "❌"]) {
+      assert.equal(confirmationAnswer(no), "no", no);
+    }
+    // Anything that is not plainly one or the other stays the model's, so a
+    // real message sent while a confirmation happens to be open is not eaten.
+    for (const other of [
+      "yes but change the price first",
+      "publish LIV-0027",
+      "no road access",
+      "tomorrow",
+      "",
+    ]) {
+      assert.equal(confirmationAnswer(other), null, other || "(empty)");
+    }
+  });
+
+  check("publish asks before it publishes, and the yes is honoured", () => {
+    // Both are requiresConfirmation, so the round trip is the command, not the
+    // exception — if the second half is unreliable the first half is useless.
+    for (const intent of ["PUBLISH_PROPERTY", "UNPUBLISH_PROPERTY"] as Intent[]) {
+      assert.equal(COMMANDS[intent].requiresConfirmation, true, intent);
+      assert.equal(COMMANDS[intent].readOnly, false, intent);
+    }
+    assert.equal(matchCommand("Publish LIV-0027")?.intent, "PUBLISH_PROPERTY");
+    assert.equal(matchCommand("Unpublish LIV-0027")?.intent, "UNPUBLISH_PROPERTY");
+    assert.equal(confirmationAnswer("yes"), "yes");
   });
 
   check("a confidence is read however the model expressed it", () => {

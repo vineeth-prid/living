@@ -396,6 +396,39 @@ function withWhen(
 }
 
 /**
+ * A yes or a no, when one is what was asked for.
+ *
+ * The CRM says "Reply *yes* to go ahead, or *no* to stop" and then sent that
+ * reply to a classifier, which is the same mistake as classifying "Publish
+ * LIV-0027": the system names the exact word it wants and then declines to read
+ * it. A model that answers "yes" with anything but CONFIRM silently drops a
+ * publish that a person had already agreed to.
+ *
+ * Only consulted while a confirmation is outstanding. Everywhere else "no" is
+ * an ordinary word — it is a perfectly good answer to "road access?" — and
+ * reading it as a refusal there would be its own bug.
+ */
+export function confirmationAnswer(text: string): "yes" | "no" | null {
+  const trimmed = strip(text).toLowerCase();
+  if (!trimmed || trimmed.length > 30) return null;
+  if (
+    /^(yes|y|yeah|yep|yup|ok|okay|k|sure|confirm(ed)?|go ahead|do it|please do|correct|right|proceed|👍|✅)$/.test(
+      trimmed,
+    )
+  ) {
+    return "yes";
+  }
+  if (
+    /^(no|n|nope|nah|cancel|stop|abort|don'?t|do not|forget it|never mind|nevermind|leave it|❌)$/.test(
+      trimmed,
+    )
+  ) {
+    return "no";
+  }
+  return null;
+}
+
+/**
  * The answer to "which day?" or "which property?", read out of the reply.
  *
  * The classifier labelled "today" as CONFIRM and returned no entities with it,
