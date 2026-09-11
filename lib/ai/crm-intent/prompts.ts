@@ -21,11 +21,16 @@ Return exactly this shape and nothing else:
   "question": string, ONLY when an action is CLARIFICATION_REQUIRED
 }
 
-Leave a key out entirely when you have no value for it. Do not include it with
-an empty string, and do not include it with null. If no action is
-CLARIFICATION_REQUIRED there must be no "question" key at all — not
-"question": "". The same goes for every field inside "entities": include only
-the ones the message actually gave you.
+"actions" and "confidence" are always required. Always include both, on every
+single response, even when you are unsure — especially when you are unsure,
+because "confidence" is how you say so. A low number is a useful answer; a
+missing one is not an answer at all.
+
+Every OTHER key works the opposite way: leave it out entirely when you have no
+value for it. Do not include it with an empty string, and do not include it with
+null. If no action is CLARIFICATION_REQUIRED there must be no "question" key at
+all — not "question": "". The same goes for every field inside "entities":
+include only the ones the message actually gave you.
 
 "actions" is a list because one message often means several things. "Raj
 called, he's interested in LIV-0027 and wants a site visit Saturday" is three

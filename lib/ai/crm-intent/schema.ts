@@ -150,11 +150,40 @@ export type IntentAction = z.infer<typeof action>;
  * follow-up. Forcing that into one intent would silently drop two of the three,
  * so the model returns a list and the pipeline executes it in order.
  */
+/**
+ * The model's confidence, however it chose to express it.
+ *
+ * This was a bare `z.number().min(0).max(1)`, and the prompt tells the model to
+ * leave out any key it has no value for — so a model that read the message
+ * perfectly and simply omitted this one number had its entire answer thrown
+ * away: right intent, right lead, right day, discarded over the formatting of a
+ * field about formatting. qwen2.5 does exactly that.
+ *
+ * A number written as a string — "0.9" — is the same number and is read as one.
+ *
+ * Anything else becomes undefined rather than a value: a bare null, an empty
+ * string, prose, and any figure outside 0-1. That last one is deliberate and is
+ * not a rescale. A model answering 95 probably means 95%, but it might mean
+ * anything, and the difference between a good guess and a wrong one here is
+ * whether an unconfirmed write runs against a real listing. Out of contract is
+ * "did not say", which the caller treats as actionable-but-confirm — so such a
+ * model still works, and simply has to say yes before anything is written.
+ *
+ * Undefined is not zero, and the distinction carries the whole fix: see the
+ * caller, where "did not say" and "said it was unsure" go different ways.
+ */
+const confidence = z.preprocess((value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const raw = typeof value === "string" ? Number(value.trim()) : value;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return undefined;
+  return raw >= 0 && raw <= 1 ? raw : undefined;
+}, z.number().min(0).max(1).optional());
+
 export const intentSchema = z.preprocess(
   dropBlanks,
   z.object({
     actions: z.array(action).min(1).max(5),
-    confidence: z.number().min(0).max(1),
+    confidence,
     /** What to ask when the model could not resolve something itself. */
     question: z.string().trim().min(1).max(300).optional(),
   }),

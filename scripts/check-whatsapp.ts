@@ -33,7 +33,7 @@ import {
   LEAD_STATUSES,
   whatsappCommandExecutions,
 } from "../lib/db/schema";
-import { OUTBOUND_RATE } from "../lib/integrations/whatsapp/config";
+import { CONFIDENCE, OUTBOUND_RATE } from "../lib/integrations/whatsapp/config";
 import { zonedDateTime } from "../lib/crm/whatsapp/time";
 import {
   normaliseIsoDate,
@@ -374,7 +374,11 @@ async function main() {
 
     assert.ok("error" in parseIntentJson("I'm not sure what you mean."));
     assert.ok("error" in parseIntentJson('{"intent":"DROP_TABLE","confidence":1}'));
-    assert.ok("error" in parseIntentJson('{"intent":"HELP","confidence":7}'));
+    // 7 is out of contract, so it is read as unstated rather than trusted —
+    // the answer survives, and the caller confirms before any write.
+    const outOfRange = parseIntentJson('{"intent":"HELP","confidence":7}');
+    assert.ok(!("error" in outOfRange));
+    assert.equal(outOfRange.confidence, undefined);
     assert.ok("error" in parseIntentJson('{"confidence":0.9}'));
 
     // A loosely written date is no longer the schema's business. It used to be
@@ -1091,12 +1095,8 @@ async function main() {
     // The guard removes a spelling of "absent"; it must not start accepting
     // values that are genuinely wrong.
     const bad = [
-      // required field blanked out is still missing, not defaulted
-      { actions: [{ intent: "HELP", entities: {} }], confidence: "" },
       // unknown intent
       { actions: [{ intent: "DROP_TABLE", entities: {} }], confidence: 0.9 },
-      // confidence out of range
-      { actions: [{ intent: "HELP", entities: {} }], confidence: 1.4 },
       // no actions at all
       { actions: [], confidence: 0.9 },
       // more than the five-action ceiling
@@ -1111,6 +1111,20 @@ async function main() {
     for (const payload of bad) {
       const parsed = parseIntentJson(JSON.stringify(payload));
       assert.ok("error" in parsed, `should have been refused: ${JSON.stringify(payload).slice(0, 60)}`);
+    }
+
+    // A confidence that cannot be read is no longer fatal, which is a change:
+    // it used to take the whole answer down, so a model that got the message
+    // exactly right had it discarded over one number. It is read as unstated
+    // instead, and the caller confirms anything that writes. An out-of-contract
+    // figure is NOT rescaled into a confident one — 95 might mean 95%, but
+    // guessing wrong authorises an unconfirmed write against a real listing.
+    for (const unreadable of ["", 1.4, 95, -1, "very sure", null]) {
+      const parsed = parseIntentJson(
+        JSON.stringify({ actions: [{ intent: "HELP", entities: {} }], confidence: unreadable }),
+      );
+      assert.ok(!("error" in parsed), `${JSON.stringify(unreadable)} should parse as unstated`);
+      assert.equal(parsed.confidence, undefined, JSON.stringify(unreadable));
     }
   });
 
@@ -1862,6 +1876,68 @@ async function main() {
     const covered = new Set(cases.map(([, intent]) => intent));
     const uncovered = advertised.filter((intent) => !covered.has(intent as Intent));
     assert.deepEqual(uncovered, [], "HELP advertises a command with no pattern");
+  });
+
+  check("a confidence is read however the model expressed it", () => {
+    const parse = (body: string) =>
+      parseIntentJson(`{"actions":[{"intent":"HELP","entities":{}}]${body}}`);
+
+    // Stated within the contract, including as a string, which is the same
+    // number written differently.
+    for (const [body, expected] of [
+      [`,"confidence":0.95`, 0.95],
+      [`,"confidence":"0.9"`, 0.9],
+      [`,"confidence":0.2`, 0.2],
+      [`,"confidence":0`, 0],
+      [`,"confidence":1`, 1],
+    ] as [string, number][]) {
+      const result = parse(body);
+      assert.ok(!("error" in result), `${body} should parse`);
+      assert.equal(result.confidence, expected, body);
+    }
+
+    // Not stated readably. The whole answer used to be discarded over this —
+    // right intent, right entities, thrown away because one number about
+    // formatting was formatted differently.
+    //
+    // 95 is in here on purpose. It probably means 95%, and it is still not
+    // trusted: reading it as 0.95 would let a model that ignored the contract
+    // authorise a write nobody confirmed.
+    for (const body of [
+      ``,
+      `,"confidence":null`,
+      `,"confidence":""`,
+      `,"confidence":"very sure"`,
+      `,"confidence":95`,
+      `,"confidence":-1`,
+    ]) {
+      const result = parse(body);
+      assert.ok(!("error" in result), `${body || "(omitted)"} should still parse`);
+      assert.equal(result.confidence, undefined, body || "(omitted)");
+    }
+  });
+
+  check("not saying how sure you are is not the same as saying you are unsure", () => {
+    // The distinction the whole fix turns on. Defaulting an unstated confidence
+    // to zero would put it under the floor and answer every message with "I
+    // didn't follow that" — the same outage in a friendlier voice. Unstated is
+    // actionable; genuinely low is not.
+    const unstated = parseIntentJson('{"actions":[{"intent":"HELP","entities":{}}]}');
+    assert.ok(!("error" in unstated));
+    const effective = unstated.confidence ?? CONFIDENCE.confirm;
+    assert.ok(
+      effective >= CONFIDENCE.confirm,
+      "an unstated confidence must not fall under the floor",
+    );
+
+    const low = parseIntentJson(
+      '{"actions":[{"intent":"HELP","entities":{}}],"confidence":0.2}',
+    );
+    assert.ok(!("error" in low));
+    assert.ok(
+      (low.confidence ?? CONFIDENCE.confirm) < CONFIDENCE.confirm,
+      "a model that says it is unsure is still refused",
+    );
   });
 
   check("a message that names no day identifies the lead and asks for the day", () => {

@@ -225,8 +225,25 @@ export async function handleEmployeeMessage(input: {
     return;
   }
 
-  const { actions, confidence } = parsed.intent;
+  const { actions } = parsed.intent;
   const first = actions[0];
+
+  // A model that omitted its confidence has not told us it is unsure — it has
+  // told us nothing, which is a different thing and must not be read as doubt.
+  // Defaulting it to zero would put every message from such a model under the
+  // floor and answer all of them with "I didn't follow that", which is the same
+  // outage wearing a friendlier message.
+  //
+  // So an unstated confidence is the minimum actionable level, and the
+  // uncertainty is paid for where it matters instead: anything that writes asks
+  // first, whatever the floors happen to be set to. Reads just run.
+  const stated = parsed.intent.confidence;
+  const confidence = stated ?? CONFIDENCE.confirm;
+  if (stated === undefined) {
+    console.warn(
+      `[whatsapp] ${parsed.model} returned no confidence; treating as unstated and confirming writes.`,
+    );
+  }
 
   // --- answering an outstanding question ---------------------------------
 
@@ -330,8 +347,11 @@ export async function handleEmployeeMessage(input: {
     confidence,
     model: parsed.model,
     // Above the floor but below the execute band: ask, even for something
-    // low-risk, because the doubt is about what was meant at all.
-    forceConfirm: confidence < CONFIDENCE.execute,
+    // low-risk, because the doubt is about what was meant at all. An unstated
+    // confidence always asks — checked separately so that a deployment which
+    // sets the two floors to the same value cannot turn "we were told nothing"
+    // into "execute it".
+    forceConfirm: stated === undefined || confidence < CONFIDENCE.execute,
   });
 }
 

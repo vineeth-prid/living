@@ -71,6 +71,7 @@ async function main() {
   let correct = 0;
   let usable = 0;
   let unparseable = 0;
+  let unstated = 0;
   const started = Date.now();
 
   for (const [text, expected] of CASES) {
@@ -83,7 +84,11 @@ async function main() {
     }
 
     const got = result.intent.actions[0]?.intent ?? "(none)";
-    const confidence = result.intent.confidence;
+    const stated = result.intent.confidence;
+    if (stated === undefined) unstated += 1;
+    // Matches the router: an unstated confidence is actionable, and writes are
+    // confirmed instead of being refused.
+    const confidence = stated ?? CONFIDENCE.confirm;
     const hit = got === expected;
     const actedOn = confidence >= CONFIDENCE.confirm;
     if (hit) correct += 1;
@@ -94,7 +99,7 @@ async function main() {
         text.padEnd(46) +
         expected.padEnd(28) +
         got.padEnd(28) +
-        confidence.toFixed(2),
+        (stated === undefined ? "unstated" : stated.toFixed(2)),
     );
   }
 
@@ -105,6 +110,7 @@ async function main() {
   right intent          ${correct}/${total}   (${Math.round((correct / total) * 100)}%)
   right AND actioned    ${usable}/${total}   (${Math.round((usable / total) * 100)}%)  <- what staff actually experience
   unusable JSON         ${unparseable}/${total}
+  no confidence given   ${unstated}/${total}   (writes are confirmed rather than refused)
   elapsed               ${seconds}s
 
   "~" is the expensive failure: the right answer, rejected for low confidence,
