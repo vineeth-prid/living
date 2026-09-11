@@ -134,6 +134,33 @@ the phrasings nobody predicted. `npm run check:commands` prints the whole routin
 surface, and is the thing to read when someone reports that the CRM does not
 understand them.
 
+**Measure, do not guess.** `npm run check:intent` runs nineteen real messages
+through whatever `OLLAMA_MODEL` points at and reports three numbers: how often
+the intent is right, how often it is right *and* lands above the confidence
+floor that gates execution, and how often the JSON is unusable. The middle
+number is what staff actually experience. Run it once per candidate:
+
+```
+OLLAMA_MODEL=llama3.2:3b        npm run check:intent
+OLLAMA_MODEL=qwen2.5:7b-instruct npm run check:intent
+```
+
+Watch for the `~` rows. Those are the expensive failures — the right answer,
+thrown away for low confidence and answered with "I didn't follow that". A model
+that cannot estimate its own confidence loses its correct answers to the floor,
+which is a large part of why a 3B feels so much worse here than its raw accuracy
+suggests.
+
+**Why 3B is not enough for this prompt.** The parser asks for a twenty-nine way
+classification, a nested JSON object with optional keys that must be *omitted*
+rather than nulled, a list of actions for messages that mean several things, and
+a calibrated confidence score. That is a lot to ask, and a 3B answers it by
+collapsing categories — which is how a question about a property comes back as a
+question about a lead. Do not lower the confidence floors to compensate: this
+CRM writes to the database, and the floor is the thing standing between a
+misread message and a wrong change to a real listing.
+
+
 
 ### 7. Wire the webhook
 
