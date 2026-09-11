@@ -1,3 +1,4 @@
+import { endOfDay } from "./time";
 import { and, count, eq, gte, isNull, lte, sql, sum } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -44,8 +45,8 @@ export function resolveRange(
   // where it was silently reported the preset's range instead.
   if (fromParam && toParam) {
     const start = new Date(fromParam);
-    const end = new Date(`${toParam}T23:59:59`);
-    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+    const end = endOfDay(toParam);
+    if (!Number.isNaN(start.getTime()) && end && !Number.isNaN(end.getTime())) {
       return { from: start, to: end, label: "Custom range" };
     }
   }

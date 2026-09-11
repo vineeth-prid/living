@@ -1,4 +1,5 @@
 import { Badge, cx } from "./ui";
+import { formatDate, formatDateTime } from "@/lib/time";
 
 // Shared CRM vocabulary. The list, pipeline, detail page and dashboard all read
 // labels and colours from here, so a status can't be spelled one way in the
@@ -87,16 +88,11 @@ export function budgetRange(min: number | null, max: number | null): string {
   return inr(min ?? max);
 }
 
-export const dateTime = (d: Date | null | undefined) =>
-  d
-    ? new Intl.DateTimeFormat("en-IN", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      }).format(d)
-    : "—";
-
-export const dateOnly = (d: Date | null | undefined) =>
-  d ? new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(d) : "—";
+// Living is an IST business, so these print the Kochi wall clock rather than
+// the reader's. Without the zone a server render and a browser render of the
+// same follow-up disagreed whenever the two were not in the same place.
+export const dateTime = formatDateTime;
+export const dateOnly = formatDate;
 
 /** "Overdue by 2 days" / "in 3 hours" — the only thing a follow-up list needs. */
 export function relativeDue(due: Date | null | undefined): {

@@ -105,6 +105,36 @@ Set `OLLAMA_BASE_URL` and `OLLAMA_MODEL`. Any instruction-following model that
 honours `format: json` works; temperature is pinned to 0 because this is
 parsing, not writing. Leave it unset to run the customer half only.
 
+**Which model.** This is classification into a fixed set of intents with a
+strict JSON shape, not open writing, so what matters is instruction-following
+and reliable structured output — not size or general knowledge. A model too
+small for the job does not fail loudly; it returns a plausible wrong intent, and
+the CRM answers "Which lead?" to a question about a property.
+
+In rough order of preference on a machine that can host them:
+
+| Model | Size | Why |
+| --- | --- | --- |
+| `qwen2.5:14b-instruct` | ~9 GB | Best structured-output reliability of the sizes most people can self-host. The default choice if the box has the memory. |
+| `qwen2.5:7b-instruct` | ~4.7 GB | Noticeably better at held-to-a-schema JSON than other 7-8B models. The sensible floor. |
+| `llama3.1:8b-instruct` | ~4.7 GB | Solid alternative where Qwen is not an option. |
+| `mistral-nemo:12b` | ~7 GB | Long context, good extraction. |
+
+Avoid anything below about 7B, and avoid base (non-instruct) builds entirely —
+they do not reliably honour `format: json`, which is the one thing this needs.
+
+None of these has been benchmarked against Living's own messages. The honest way
+to choose is to run twenty or so real messages through two candidates and
+compare, rather than trusting the table above.
+
+**The router does not depend on this.** Every command HELP advertises is matched
+deterministically before the model is consulted (`lib/crm/whatsapp/commands.ts`),
+so those keep working when Ollama is slow, down, or too small. The model handles
+the phrasings nobody predicted. `npm run check:commands` prints the whole routing
+surface, and is the thing to read when someone reports that the CRM does not
+understand them.
+
+
 ### 7. Wire the webhook
 
 **Admin → Settings → Integrations → WhatsApp**, then **Test connection** and

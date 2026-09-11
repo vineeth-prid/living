@@ -21,7 +21,7 @@ import { audit } from "@/lib/audit";
 import { createLead, linkProperty, recordActivity } from "@/lib/leads";
 import { notifyLeadAssigned } from "@/lib/notify";
 import { notifyLeadAssigned as whatsappLeadAssigned } from "@/lib/crm/whatsapp/events";
-import { zonedDateTime } from "@/lib/crm/whatsapp/time";
+import { zonedDateTime } from "@/lib/time";
 import {
   addLeadNote,
   scheduleFollowUp,

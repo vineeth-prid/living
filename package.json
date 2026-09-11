@@ -20,7 +20,8 @@
     "check:quarter": "tsx scripts/check-quarter-end.ts",
     "check:whatsapp": "tsx scripts/check-whatsapp.ts",
     "check:whatsapp:db": "tsx scripts/check-whatsapp-db.ts",
-    "check:whatsapp:connection": "tsx scripts/check-whatsapp-connection.ts"
+    "check:whatsapp:connection": "tsx scripts/check-whatsapp-connection.ts",
+    "check:commands": "tsx scripts/check-commands.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",

@@ -18,6 +18,7 @@ import {
 } from "../lib/integrations/whatsapp/openwa/webhook";
 import { maskPhone, normalisePhone } from "../lib/integrations/whatsapp/phone";
 import { INTENTS, parseIntentJson } from "../lib/ai/crm-intent/schema";
+import type { Intent } from "../lib/ai/crm-intent/schema";
 import { answerFor, matchCommand } from "../lib/crm/whatsapp/commands";
 import {
   COMMANDS,
@@ -1805,33 +1806,113 @@ async function main() {
   // are not ambiguous English, so they are read rather than classified, and
   // these pin that they stay read.
 
-  check("the rigid commands are understood without a model", () => {
-    const cases: [string, string, Record<string, string>][] = [
-      ["Add photos to LIV-0010", "ADD_PROPERTY_MEDIA", { propertyReference: "LIV-0010" }],
-      ["add photos to liv 10", "ADD_PROPERTY_MEDIA", { propertyReference: "LIV-0010" }],
-      ["Add lead Raj 9876543210", "CREATE_LEAD", { leadName: "Raj", mobile: "9876543210" }],
-      ["add lead Rajesh Pillai +91 98765 43210", "CREATE_LEAD", { leadName: "Rajesh Pillai", mobile: "9876543210" }],
-      ["Show me Rajesh Pillai", "GET_LEAD", { leadName: "Rajesh Pillai" }],
-      ["lead Raj", "GET_LEAD", { leadName: "Raj" }],
-      ["publish LIV-0010", "PUBLISH_PROPERTY", { propertyReference: "LIV-0010" }],
-      ["LIV-0010", "GET_PROPERTY", { propertyReference: "LIV-0010" }],
-      ["help", "HELP", {}],
+  check("every command HELP advertises is understood without a model", () => {
+    // One row per line HELP prints. If a command is added to the registry with
+    // a help string and no row here, the count assertion at the end fails and
+    // this list is what has to grow.
+    const cases: [string, Intent][] = [
+      ["Show my follow-ups today", "GET_MY_FOLLOWUPS"],
+      ["Show my leads", "GET_MY_LEADS"],
+      ["Show my hot leads", "GET_MY_LEADS"],
+      ["Show me Raj", "GET_LEAD"],
+      ["Get property LIV-0027", "GET_PROPERTY"],
+      ["Who am I", "GET_PROFILE"],
+      ["Help", "HELP"],
+      ["Add follow-up for Raj tomorrow at 10am", "ADD_FOLLOWUP"],
+      ["Mark Raj's follow-up done", "COMPLETE_FOLLOWUP"],
+      ["Add note to Raj: interested in OMR", "ADD_LEAD_NOTE"],
+      ["Move Raj to negotiation", "CHANGE_LEAD_STATUS"],
+      ["Raj called about LIV-0027", "ADD_LEAD_ACTIVITY"],
+      ["Link LIV-0027 to Raj", "ASSOCIATE_PROPERTY_TO_LEAD"],
+      ["Add lead Raj 9876543210", "CREATE_LEAD"],
+      ["Set Raj's city to Kochi", "UPDATE_LEAD"],
+      ["Move Raj's follow-up to tomorrow 4pm", "RESCHEDULE_FOLLOWUP"],
+      ["Set LIV-0027 possession to Ready to move", "UPDATE_PROPERTY"],
+      ["Add photos to LIV-0027", "ADD_PROPERTY_MEDIA"],
+      ["System status", "GET_SYSTEM_STATUS"],
+      ["Assign Raj to Anitha", "ASSIGN_LEAD"],
+      ["Add a new property", "CREATE_PROPERTY_DRAFT"],
+      ["Change LIV-0027 asking price to 1.75 crore", "UPDATE_PROPERTY_PRICE"],
+      ["Publish LIV-0027", "PUBLISH_PROPERTY"],
+      ["Unpublish LIV-0027", "UNPUBLISH_PROPERTY"],
+      // The exact wordings reported as broken from staging.
+      ["Change LIV-0010 asking price to 1Cr", "UPDATE_PROPERTY_PRICE"],
+      ["Publish LIV-0010", "PUBLISH_PROPERTY"],
+      ["Show me Rajesh Pillai", "GET_LEAD"],
+      ["add photos to liv 10", "ADD_PROPERTY_MEDIA"],
+      ["add lead Rajesh Pillai +91 98765 43210", "CREATE_LEAD"],
     ];
-    for (const [text, intent, entities] of cases) {
+    for (const [text, intent] of cases) {
       const found = matchCommand(text);
-      assert.ok(found, `"${text}" was not understood`);
+      assert.ok(found, `"${text}" reached no pattern`);
       assert.equal(found.intent, intent, `"${text}"`);
-      assert.deepEqual(found.entities, entities, `"${text}"`);
+      // Whatever was matched must also be runnable: a pattern that produces a
+      // command the registry would immediately reject is not an improvement.
+      assert.deepEqual(
+        missingFields(found.intent, found.entities),
+        [],
+        `"${text}" matched ${found.intent} but is missing a required field`,
+      );
     }
+
+    // Every advertised command is covered by at least one row above.
+    const advertised = Object.entries(COMMANDS)
+      .filter(([, spec]) => spec.help)
+      .map(([intent]) => intent);
+    const covered = new Set(cases.map(([, intent]) => intent));
+    const uncovered = advertised.filter((intent) => !covered.has(intent as Intent));
+    assert.deepEqual(uncovered, [], "HELP advertises a command with no pattern");
+  });
+
+  check("a message that names no day identifies the lead and asks for the day", () => {
+    // "Add follow up for Rajesh Pillai WhatsApp at 10am" — 10am on which day?
+    // The reported bug was that this asked "Which lead?", throwing away the
+    // name it had been given. Asking for the day is the right question; asking
+    // for the lead was not.
+    const found = matchCommand("Add follow up for Rajesh Pillai WhatsApp at 10am");
+    assert.equal(found?.intent, "ADD_FOLLOWUP");
+    assert.equal(found?.entities.leadName, "Rajesh Pillai");
+    assert.equal(found?.entities.followUpKind, "whatsapp");
+    assert.deepEqual(
+      missingFields(found!.intent, found!.entities),
+      ["date"],
+      "the day, and only the day, should still be outstanding",
+    );
+  });
+
+  check("an ambiguous day is asked about, not guessed at", () => {
+    // "Friday" on a Friday means either today or next week, and the CRM refuses
+    // to pick. The command is still identified — the lead is right, only the
+    // day is outstanding — so the question that follows is answerable.
+    const friday = new Date("2026-09-11T06:00:00Z"); // a Friday in Kochi
+    assert.equal(
+      new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "long" })
+        .format(friday),
+      "Friday",
+    );
+    const found = matchCommand("Move Raj's follow-up to Friday 4pm");
+    assert.equal(found?.intent, "RESCHEDULE_FOLLOWUP");
+    assert.equal(found?.entities.leadName, "Raj");
+    assert.equal(found?.entities.date, undefined, "an ambiguous day is left unset");
+  });
+
+  check("the reported entities are the ones the handlers need", () => {
+    const price = matchCommand("Change LIV-0010 asking price to 1Cr");
+    assert.deepEqual(price?.entities, {
+      propertyReference: "LIV-0010",
+      amount: 10_000_000,
+    });
+    const followup = matchCommand("Add follow up for Rajesh Pillai WhatsApp at 10am");
+    assert.equal(followup?.entities.leadName, "Rajesh Pillai");
+    assert.equal(followup?.entities.followUpKind, "whatsapp");
+    const note = matchCommand("Add note to Raj: interested in OMR");
+    assert.equal(note?.entities.note, "interested in OMR");
   });
 
   check("a sentence is still the model's to interpret", () => {
     // Matching these would be worse than asking: each is either a real
     // sentence, or a command whose object is a set rather than a person.
     for (const text of [
-      "show my leads",
-      "show me my hot leads",
-      "show my followups",
       "show all properties",
       "Raj called this morning, wants a villa under 90L",
       "move tomorrow's call to Friday",
