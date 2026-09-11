@@ -6,7 +6,16 @@ import { formatPrice } from "@/lib/money";
 
 export const t = {
   help: (commands: string[]) =>
-    ["*Living CRM*", "", "You can say:", ...commands.map((c) => `• ${c}`)].join("\n"),
+    [
+      "*Living CRM*",
+      "",
+      "You can say:",
+      ...commands.map((c) => `• ${c}`),
+      "",
+      // An escape nobody knows about is not an escape. Last line, because it is
+      // the one worth remembering when everything else has gone wrong.
+      "Stuck, or I keep asking the same thing? Send *cancel* to drop it and start again.",
+    ].join("\n"),
 
   notUnderstood: () =>
     "I didn't follow that. Send *help* to see what I can do.",
@@ -42,6 +51,28 @@ export const t = {
   cancelled: () => "Cancelled. Nothing was changed.",
 
   nothingPending: () => "There's nothing waiting for a yes or no.",
+
+  /**
+   * The same question, twice, is a loop — so it is dropped rather than asked a
+   * third time.
+   *
+   * Telling someone to send *cancel* is not enough on its own: if the CRM could
+   * not read their last two answers there is no reason to believe it will read
+   * that one either. So the pending command is closed here, and the way out
+   * does not depend on anything else being understood.
+   */
+  stuck: (question: string) =>
+    [
+      `I asked you the same thing twice, so I've dropped it — nothing was changed.`,
+      "",
+      `I was stuck on: ${question}`,
+      "",
+      "Try the whole thing in one message, which usually works better. For example:",
+      "• *Add follow-up for Raj tomorrow at 10am*",
+      "• *Change LIV-0010 asking price to 1.2 crore*",
+      "",
+      "Send *help* for everything I understand.",
+    ].join("\n"),
 
   /** §1. One missing field, asked for in the words the employee would use. */
   missingField: (field: string, intent: string) => {

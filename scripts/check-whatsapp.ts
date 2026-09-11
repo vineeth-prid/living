@@ -19,7 +19,7 @@ import {
 import { maskPhone, normalisePhone } from "../lib/integrations/whatsapp/phone";
 import { INTENTS, parseIntentJson } from "../lib/ai/crm-intent/schema";
 import type { Intent } from "../lib/ai/crm-intent/schema";
-import { answerFor, confirmationAnswer, matchCommand } from "../lib/crm/whatsapp/commands";
+import { answerFor, confirmationAnswer, isEscape, matchCommand } from "../lib/crm/whatsapp/commands";
 import {
   COMMANDS,
   helpFor,
@@ -1876,6 +1876,46 @@ async function main() {
     const covered = new Set(cases.map(([, intent]) => intent));
     const uncovered = advertised.filter((intent) => !covered.has(intent as Intent));
     assert.deepEqual(uncovered, [], "HELP advertises a command with no pattern");
+  });
+
+  check("there is always a way out, and it does not need the model", () => {
+    for (const word of [
+      "cancel", "Cancel", "stop", "reset", "abort", "quit",
+      "start over", "start again", "forget it", "never mind", "nevermind", "clear",
+    ]) {
+      assert.ok(isEscape(word), `"${word}" should end whatever is in flight`);
+    }
+
+    // "no" is not an escape. It answers "road access?" perfectly well, and only
+    // means stop when a yes-or-no was what was asked — which is a different
+    // branch, in the one place it is unambiguous.
+    assert.equal(isEscape("no"), false);
+    assert.equal(confirmationAnswer("no"), "no");
+
+    // Nor is a real message that happens to contain one of the words.
+    for (const message of [
+      "cancel the site visit with Raj",
+      "stop marketing LIV-0010",
+      "clear the follow-up for Meera",
+    ]) {
+      assert.equal(isEscape(message), false, message);
+    }
+  });
+
+  check("the same question twice is a loop, and the loop is dropped", () => {
+    // Answering "Which day?" with something unreadable left the command still
+    // missing a date, which asked "Which day?" again — and each turn wrote a
+    // fresh pending row with a fresh expiry, so it could not even time out.
+    const question = t.missingField("date", "ADD_FOLLOWUP");
+    assert.equal(question, "Which day?");
+
+    // The reply that breaks it names what it was stuck on and drops the
+    // command, so escaping does not depend on the next message being read
+    // either.
+    const stuck = t.stuck(question);
+    assert.match(stuck, /dropped it/i);
+    assert.match(stuck, /Which day\?/);
+    assert.match(stuck, /help/i);
   });
 
   check("yes and no are read, not classified", () => {

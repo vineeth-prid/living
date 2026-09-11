@@ -7,7 +7,7 @@ import {
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { parseIntent } from "@/lib/ai/crm-intent/parser";
-import { answerFor, confirmationAnswer, matchCommand } from "./commands";
+import { answerFor, confirmationAnswer, isEscape, matchCommand } from "./commands";
 import type { Entities, Intent, IntentAction } from "@/lib/ai/crm-intent/schema";
 import { CONFIDENCE, PENDING_COMMAND_TTL_MS } from "@/lib/integrations/whatsapp/config";
 import { sendText } from "@/lib/integrations/whatsapp/service";
@@ -108,6 +108,18 @@ export async function handleEmployeeMessage(input: {
     return;
   }
 
+  // §55a. The way out, checked before anything else can swallow it.
+  //
+  // Whatever is in flight — a form, a confirmation, a question being asked for
+  // the second time — these words end it. Above every other branch on purpose:
+  // an escape that only works in some states is not one, and the person
+  // reaching for it has usually just been misunderstood twice already.
+  if (pending && isEscape(text)) {
+    await closePending(pending.id, "cancelled");
+    await reply(t.cancelled());
+    return;
+  }
+
   // §55b. A filled-in form is not a sentence, so it never goes to the model.
   //
   // This is the whole point of template intake: the labels anchor extraction,
@@ -116,14 +128,8 @@ export async function handleEmployeeMessage(input: {
   // the bug this replaces.
   const waitingOn = intakeForm(pending);
   if (waitingOn && pending) {
-    // "cancel" has to keep working mid-form, and it is the one word that must
-    // not be read as a field value.
-    if (/^(cancel|stop|forget it|never mind)\b/i.test(text)) {
-      await closePending(pending.id, "cancelled");
-      await reply(t.cancelled());
-      return;
-    }
-
+    // "cancel" mid-form is handled by the escape above, which covers every
+    // state rather than only this one. It used to be re-implemented here.
     const { values, unreadable } = parseForm(waitingOn, text);
     const merged = { ...pendingEntities(pending), ...values };
 
@@ -339,6 +345,9 @@ export async function handleEmployeeMessage(input: {
       confidence: Math.max(confidence, CONFIDENCE.confirm),
       model: parsed.model,
       resumed: true,
+      // What was just asked. If the command comes back still needing it, the
+      // answer did not land and asking again would only loop.
+      previousQuestion: pending.question,
     });
     return;
   }
@@ -411,6 +420,15 @@ async function runBatch(args: {
   forceConfirm?: boolean;
   alreadyConfirmed?: boolean;
   resumed?: boolean;
+  /**
+   * The question this message was answering, when it was answering one.
+   *
+   * Asking it again means the answer did not land, and asking it a third time
+   * is a loop — so the command is dropped instead. Without this the CRM can
+   * re-ask the same thing indefinitely, each turn writing a fresh pending row
+   * with a fresh expiry, so it never even times out.
+   */
+  previousQuestion?: string | null;
 }) {
   const { user, actions } = args;
 
@@ -445,6 +463,23 @@ async function runBatch(args: {
     if (missing.length === 0) continue;
 
     const question = t.missingField(missing[0], action.intent);
+
+    // The same question, a second time, with the answer having changed nothing.
+    // Dropped rather than asked again — and dropped here rather than told to
+    // send "cancel", because a CRM that could not read the last answer has no
+    // business assuming it will read that one.
+    if (args.previousQuestion && question === args.previousQuestion) {
+      await record({
+        ...args,
+        intent: action.intent,
+        entities: action.entities,
+        status: "failed",
+        error: `asked twice, unanswered: ${question}`,
+      });
+      await args.reply(t.stuck(question));
+      return;
+    }
+
     await db().insert(whatsappCommandExecutions).values({
       id: newId(),
       messageId: args.messageId,
@@ -539,6 +574,20 @@ async function runBatch(args: {
     // A handler that needs more information parks the batch and asks. The
     // remaining actions are dropped rather than run against a half-answer.
     if (result.needs) {
+      // Same loop, one level deeper: a handler can keep asking for something it
+      // cannot read just as easily as the gate above can.
+      if (args.previousQuestion && result.needs.question === args.previousQuestion) {
+        await record({
+          ...args,
+          intent: action.intent,
+          entities: action.entities,
+          status: "failed",
+          error: `asked twice, unanswered: ${result.needs.question}`,
+        });
+        await args.reply(t.stuck(result.needs.question));
+        return;
+      }
+
       await db().insert(whatsappCommandExecutions).values({
         id: newId(),
         messageId: args.messageId,

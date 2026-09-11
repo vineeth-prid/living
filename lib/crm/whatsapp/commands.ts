@@ -396,6 +396,25 @@ function withWhen(
 }
 
 /**
+ * The way out, from anywhere.
+ *
+ * Whatever the CRM is in the middle of — a form, a question it keeps repeating,
+ * a confirmation — these words end it. Read here rather than classified, for
+ * the obvious reason: an escape hatch that depends on a model understanding it
+ * is not an escape hatch, and the moment somebody needs one is precisely the
+ * moment the model has already failed them twice.
+ *
+ * "no" is deliberately absent. It is a perfectly good answer to "road access?",
+ * and only means "stop" when a yes-or-no was what was asked for — which
+ * confirmationAnswer handles, in the one place it is unambiguous.
+ */
+export function isEscape(text: string): boolean {
+  return /^(cancel|stop|reset|abort|quit|exit|start over|start again|forget it|never ?mind|leave it|clear)[.!]?$/i.test(
+    strip(text),
+  );
+}
+
+/**
  * A yes or a no, when one is what was asked for.
  *
  * The CRM says "Reply *yes* to go ahead, or *no* to stop" and then sent that
