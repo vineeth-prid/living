@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { audit } from "@/lib/audit";
+import { revalidatePublicProperty } from "@/lib/properties.cache";
 import { createLead, findDuplicateLeads, recordActivity } from "@/lib/leads";
 import {
   addLeadNote as addNoteService,
@@ -597,6 +598,13 @@ export async function setPublished(
     entityId: found.value.id,
     after: { channel: "whatsapp" },
   });
+
+  // The row is only half the job: the public pages are prerendered, so without
+  // this the listing stays `published` in Postgres, is reported as "live on
+  // site" here, and is still missing from the website until the next deploy.
+  // Unpublishing has the same problem in reverse — it would linger on the site
+  // after being withdrawn, which is the worse direction of the two.
+  await revalidatePublicProperty(found.value.id);
 
   return ok(publish ? t.published(label) : t.unpublished(label), {
     target: { entity: "property", id: found.value.id },

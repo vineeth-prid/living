@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { properties, whatsappConversations, type MediaKind } from "@/lib/db/schema";
 import { attachMedia } from "@/lib/properties.media";
+import { revalidatePublicProperty } from "@/lib/properties.cache";
 import { hasStorage } from "@/lib/storage";
 import { openWAConfig } from "@/lib/integrations/whatsapp/config";
 import type { InboundMedia } from "@/lib/integrations/whatsapp/types";
@@ -101,11 +102,11 @@ export async function attachWhatsAppMedia(input: {
   if (error) return { ok: false, reply: `I couldn't store that: ${error}` };
 
   // Attaching to a live listing changes the website, so the public pages have
-  // to be told. Imported here rather than at the top to keep this module
-  // usable from the check scripts, which have no Next request context.
+  // to be told — all of them, not just the listing's own page. A photo is what
+  // the homepage card shows, and that card was not being refreshed.
   const { revalidatePath } = await import("next/cache");
   revalidatePath(`/admin/properties/${property.id}`);
-  revalidatePath(`/homes/${property.id}`);
+  await revalidatePublicProperty(property.id);
 
   const label = property.reference ?? property.name;
   const noun = kind === "image" ? "Photo" : kind.replace(/_/g, " ");

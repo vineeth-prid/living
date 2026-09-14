@@ -34,6 +34,7 @@ import {
   whatsappCommandExecutions,
 } from "../lib/db/schema";
 import { CONFIDENCE, OUTBOUND_RATE } from "../lib/integrations/whatsapp/config";
+import { publicPropertyPaths } from "../lib/properties.cache";
 import { zonedDateTime } from "../lib/crm/whatsapp/time";
 import {
   normaliseIsoDate,
@@ -1878,6 +1879,23 @@ async function main() {
     assert.deepEqual(uncovered, [], "HELP advertises a command with no pattern");
   });
 
+  check("publishing invalidates every page a listing appears on", () => {
+    // A listing published over WhatsApp was `published` in Postgres, reported
+    // as "live on site", and still missing from the website — because the site
+    // is prerendered and nothing told it to re-render. The admin panel had the
+    // path list; nothing else could reach it, so the other two paths grew a
+    // shorter version and then none at all.
+    const paths = publicPropertyPaths("liv-0010");
+    for (const page of ["/", "/services", "/homes", "/homes/liv-0010", "/sitemap.xml"]) {
+      assert.ok(paths.includes(page), `${page} must be invalidated`);
+    }
+
+    // Without an id, the listing's own page is simply not in the list — rather
+    // than "/homes/undefined", which invalidates nothing and hides the mistake.
+    assert.deepEqual(publicPropertyPaths(), ["/", "/services", "/homes", "/sitemap.xml"]);
+    assert.deepEqual(publicPropertyPaths(null), ["/", "/services", "/homes", "/sitemap.xml"]);
+  });
+
   check("there is always a way out, and it does not need the model", () => {
     for (const word of [
       "cancel", "Cancel", "stop", "reset", "abort", "quit",
@@ -2034,18 +2052,30 @@ async function main() {
 
   check("an ambiguous day is asked about, not guessed at", () => {
     // "Friday" on a Friday means either today or next week, and the CRM refuses
-    // to pick. The command is still identified — the lead is right, only the
-    // day is outstanding — so the question that follows is answerable.
-    const friday = new Date("2026-09-11T06:00:00Z"); // a Friday in Kochi
+    // to pick rather than booking one of them.
+    //
+    // `now` is injected. This assertion used to run against the real clock and
+    // so only held on a Friday — it passed the day it was written and failed
+    // the following Monday, which is the least useful kind of test.
+    const onAFriday = new Date("2026-09-11T06:00:00Z");
     assert.equal(
       new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "long" })
-        .format(friday),
+        .format(onAFriday),
       "Friday",
+      "the fixture has to actually be a Friday in Kochi",
     );
+    assert.equal(resolveRelativeDate("Friday 4pm", onAFriday)?.kind, "ambiguous");
+
+    // On any other day it resolves cleanly, so the refusal is about the
+    // ambiguity and not about the word.
+    const onAMonday = new Date("2026-09-14T06:00:00Z");
+    assert.equal(resolveRelativeDate("Friday 4pm", onAMonday)?.kind, "date");
+
+    // The command itself is identified either way — the lead is right, and only
+    // the day is ever outstanding, so the question that follows is answerable.
     const found = matchCommand("Move Raj's follow-up to Friday 4pm");
     assert.equal(found?.intent, "RESCHEDULE_FOLLOWUP");
     assert.equal(found?.entities.leadName, "Raj");
-    assert.equal(found?.entities.date, undefined, "an ambiguous day is left unset");
   });
 
   check("the reported entities are the ones the handlers need", () => {

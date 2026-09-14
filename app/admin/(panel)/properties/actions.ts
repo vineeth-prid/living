@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { publicPropertyPaths } from "@/lib/properties.cache";
 import { redirect } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -34,12 +35,11 @@ import { notifyPropertyPublished } from "@/lib/crm/whatsapp/events";
 
 // Public pages are cached; anything that changes what the site shows has to
 // invalidate them or a published listing won't appear until the next deploy.
+//
+// The list is shared, because it used to live only here — and the WhatsApp
+// paths then grew a shorter version, and a third with nothing in it at all.
 function revalidatePublic(id?: string) {
-  revalidatePath("/");
-  revalidatePath("/services");
-  revalidatePath("/homes");
-  if (id) revalidatePath(`/homes/${id}`);
-  revalidatePath("/sitemap.xml");
+  for (const path of publicPropertyPaths(id)) revalidatePath(path);
 }
 
 function parse(formData: FormData) {
