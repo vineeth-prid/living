@@ -211,6 +211,24 @@ tables can stay; they cost nothing when empty.
 - High-risk actions (publish, unpublish, price change, reassign) always ask
   first, whatever the model's confidence. Pending confirmations live in
   `whatsapp_command_executions` and expire.
+- **Group chats are ignored entirely.** Routing is decided by the sender's
+  number, and in a group that number is one person in front of an unknown
+  audience. If the bot's number is added to a group — or an employee's number
+  talks in one the bot is already in — every message from that chat is stored
+  and then dropped: no command runs, no lead is created, nothing is sent back.
+
+  Without this, an employee saying "we should publish the Kakkanad one" in a
+  group could have a conversation executed as a CRM write, and every other
+  person who spoke there would be filed as a lead and sent an unsolicited
+  reply — which is also how a WhatsApp number gets reported and banned.
+
+  A group is detected by its `@g.us` chat id, and also by an `author` that
+  differs from the chat, which covers gateways that rewrite the id. Supporting
+  groups later is not a flag: it needs an allowlist of specific group ids, a
+  rule about which commands may run in front of an audience, and replies
+  addressed to the chat rather than to the sender. Until that exists it is
+  denied, not configurable.
+
 - Customers and unknown numbers reach `customer.ts` only. There is no branch
   that can run a CRM command for them.
 - `finalPrice`, `sellerContact` and `internalNotes` are not selected by any

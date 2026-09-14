@@ -186,6 +186,12 @@ function toMessage(data: Record<string, unknown> | undefined): InboundMessage | 
   return {
     providerMessageId,
     chatId,
+    // WhatsApp group ids end "@g.us"; a one-to-one chat is "@c.us" or a bare
+    // number. `author` being set alongside a different chat is the other
+    // tell — in a group the chat is the group and the author is the person.
+    isGroup:
+      /@g\.us$/i.test(chatId) ||
+      Boolean(str(data.author) && str(data.author) !== chatId),
     fromPhone: from?.phoneNumber ?? null,
     senderLid: from ? null : maskedId,
     senderName:

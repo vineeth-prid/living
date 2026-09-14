@@ -129,6 +129,31 @@ async function routeMessage(event: InboundEvent, message: InboundMessage) {
     .set({ lastInboundAt: new Date() })
     .where(eq(whatsappSessions.id, session.id));
 
+  // §2b. A group is not a command line, and never a private one.
+  //
+  // Routing is decided by the sender's number. In a one-to-one chat that number
+  // is also the whole audience; in a group it is one person in front of an
+  // unknown crowd, and the two are not interchangeable:
+  //
+  //  · an employee talking about a listing — "we should publish the Kakkanad
+  //    one" — would have a conversation executed as a CRM write;
+  //  · everyone else who spoke would be filed as a lead and sent an
+  //    unsolicited reply, which pollutes the CRM and is how a WhatsApp number
+  //    gets reported and banned.
+  //
+  // Denied by default and not configurable here. Supporting groups is not a
+  // flag — it needs an allowlist of specific group ids, a separate rule about
+  // which commands may run in front of an audience, and replies addressed to
+  // the chat rather than the sender. Until that exists, the message is stored
+  // and nothing else happens to it.
+  if (message.isGroup) {
+    await db()
+      .update(whatsappMessages)
+      .set({ status: "ignored" })
+      .where(eq(whatsappMessages.id, storedId));
+    return;
+  }
+
   if (!contact.isAllowed) {
     // The message is already stored above — the record of what arrived is
     // worth keeping. Nothing is done with it and nothing is sent back.

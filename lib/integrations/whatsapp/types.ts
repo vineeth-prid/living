@@ -63,6 +63,16 @@ export type InboundMessage = {
   providerMessageId: string;
   chatId: string;
   /**
+   * Whether this arrived in a group rather than a one-to-one chat.
+   *
+   * It matters enormously. Routing is decided by the sender's number, and in a
+   * group that number belongs to one person while the audience is everyone —
+   * so without this an employee discussing a listing in a group could have a
+   * sentence executed as a CRM write, and every stranger who spoke there would
+   * be turned into a lead and sent an unsolicited reply.
+   */
+  isGroup: boolean;
+  /**
    * E.164 without the plus, already normalised — or null when the gateway
    * masked the sender. A masked sender carries `senderLid` instead and the
    * real number has to be fetched before the message can be routed.

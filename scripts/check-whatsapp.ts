@@ -1879,6 +1879,45 @@ async function main() {
     assert.deepEqual(uncovered, [], "HELP advertises a command with no pattern");
   });
 
+  /** A signed message.received delivery, parsed — or null if it was refused. */
+  const signedMessage = (data: Record<string, unknown>) => {
+    const body = JSON.stringify({
+      event: "message.received",
+      sessionId: "session-1",
+      idempotencyKey: `k-${Math.random()}`,
+      data: { id: `m-${Math.random()}`, ...data },
+    });
+    const parsed = parseOpenWAWebhook(body, headersFor(body), SECRET);
+    return "rejected" in parsed ? null : parsed.message;
+  };
+
+  check("a group is never a command line", () => {
+    // Routing is by sender number, and in a group that number is one person in
+    // front of an unknown audience. Left alone, an employee discussing a
+    // listing there could have a sentence executed as a CRM write, and every
+    // stranger who spoke would be filed as a lead and sent a reply nobody asked
+    // for — which is also how a WhatsApp number gets banned.
+    const groupChats = [
+      { chatId: "120363041234567890@g.us", author: "919876543210@c.us" },
+      { chatId: "919876543210-1580000000@g.us", author: "919876543210@c.us" },
+      // The chat is one number and the author another: a group, whatever the
+      // id looks like.
+      { chatId: "919999999999@c.us", author: "919876543210@c.us" },
+    ];
+    for (const data of groupChats) {
+      const parsed = signedMessage({ ...data, senderPhone: "919876543210", body: "publish LIV-0010" });
+      assert.ok(parsed, "the delivery should still parse");
+      assert.equal(parsed.isGroup, true, JSON.stringify(data));
+    }
+
+    // A one-to-one chat is untouched — the fix must not deafen the bot.
+    for (const chatId of ["919876543210@c.us", "919876543210"]) {
+      const parsed = signedMessage({ chatId, from: chatId, body: "publish LIV-0010" });
+      assert.ok(parsed);
+      assert.equal(parsed.isGroup, false, chatId);
+    }
+  });
+
   check("publishing invalidates every page a listing appears on", () => {
     // A listing published over WhatsApp was `published` in Postgres, reported
     // as "live on site", and still missing from the website — because the site
