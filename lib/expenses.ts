@@ -1,3 +1,4 @@
+import { endOfDay } from "./time";
 import {
   and,
   asc,
@@ -63,7 +64,7 @@ function whereClause(f: ExpenseFilters) {
     f.propertyId ? eq(expenses.propertyId, f.propertyId) : undefined,
     f.leadId ? eq(expenses.leadId, f.leadId) : undefined,
     f.from ? gte(expenses.spentAt, new Date(f.from)) : undefined,
-    f.to ? lte(expenses.spentAt, new Date(`${f.to}T23:59:59`)) : undefined,
+    f.to ? lte(expenses.spentAt, endOfDay(f.to) ?? new Date(f.to)) : undefined,
     f.q
       ? or(
           ilike(expenses.description, `%${f.q}%`),

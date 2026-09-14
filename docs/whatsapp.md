@@ -105,6 +105,63 @@ Set `OLLAMA_BASE_URL` and `OLLAMA_MODEL`. Any instruction-following model that
 honours `format: json` works; temperature is pinned to 0 because this is
 parsing, not writing. Leave it unset to run the customer half only.
 
+**Which model.** This is classification into a fixed set of intents with a
+strict JSON shape, not open writing, so what matters is instruction-following
+and reliable structured output — not size or general knowledge. A model too
+small for the job does not fail loudly; it returns a plausible wrong intent, and
+the CRM answers "Which lead?" to a question about a property.
+
+In rough order of preference on a machine that can host them:
+
+| Model | Size | Why |
+| --- | --- | --- |
+| `qwen2.5:14b-instruct` | ~9 GB | Best structured-output reliability of the sizes most people can self-host. The default choice if the box has the memory. |
+| `qwen2.5:7b-instruct` | ~4.7 GB | Noticeably better at held-to-a-schema JSON than other 7-8B models. The sensible floor. |
+| `llama3.1:8b-instruct` | ~4.7 GB | Solid alternative where Qwen is not an option. |
+| `mistral-nemo:12b` | ~7 GB | Long context, good extraction. |
+
+Avoid anything below about 7B, and avoid base (non-instruct) builds entirely —
+they do not reliably honour `format: json`, which is the one thing this needs.
+
+None of these has been benchmarked against Living's own messages. The honest way
+to choose is to run twenty or so real messages through two candidates and
+compare, rather than trusting the table above.
+
+**The router does not depend on this.** Every command HELP advertises is matched
+deterministically before the model is consulted (`lib/crm/whatsapp/commands.ts`),
+so those keep working when Ollama is slow, down, or too small. The model handles
+the phrasings nobody predicted. `npm run check:commands` prints the whole routing
+surface, and is the thing to read when someone reports that the CRM does not
+understand them.
+
+**Measure, do not guess.** `npm run check:intent` runs nineteen real messages
+through whatever `OLLAMA_MODEL` points at and reports three numbers: how often
+the intent is right, how often it is right *and* lands above the confidence
+floor that gates execution, and how often the JSON is unusable. The middle
+number is what staff actually experience. Run it once per candidate:
+
+```
+OLLAMA_MODEL=llama3.2:3b        npm run check:intent
+OLLAMA_MODEL=qwen2.5:7b-instruct npm run check:intent
+```
+
+Watch for the `~` rows. Those are the expensive failures — the right answer,
+thrown away for low confidence and answered with "I didn't follow that". A model
+that cannot estimate its own confidence loses its correct answers to the floor,
+which is a large part of why a 3B feels so much worse here than its raw accuracy
+suggests.
+
+**Why 3B is not enough for this prompt.** The parser asks for a twenty-nine way
+classification, a nested JSON object with optional keys that must be *omitted*
+rather than nulled, a list of actions for messages that mean several things, and
+a calibrated confidence score. That is a lot to ask, and a 3B answers it by
+collapsing categories — which is how a question about a property comes back as a
+question about a lead. Do not lower the confidence floors to compensate: this
+CRM writes to the database, and the floor is the thing standing between a
+misread message and a wrong change to a real listing.
+
+
+
 ### 7. Wire the webhook
 
 **Admin → Settings → Integrations → WhatsApp**, then **Test connection** and
@@ -154,6 +211,24 @@ tables can stay; they cost nothing when empty.
 - High-risk actions (publish, unpublish, price change, reassign) always ask
   first, whatever the model's confidence. Pending confirmations live in
   `whatsapp_command_executions` and expire.
+- **Group chats are ignored entirely.** Routing is decided by the sender's
+  number, and in a group that number is one person in front of an unknown
+  audience. If the bot's number is added to a group — or an employee's number
+  talks in one the bot is already in — every message from that chat is stored
+  and then dropped: no command runs, no lead is created, nothing is sent back.
+
+  Without this, an employee saying "we should publish the Kakkanad one" in a
+  group could have a conversation executed as a CRM write, and every other
+  person who spoke there would be filed as a lead and sent an unsolicited
+  reply — which is also how a WhatsApp number gets reported and banned.
+
+  A group is detected by its `@g.us` chat id, and also by an `author` that
+  differs from the chat, which covers gateways that rewrite the id. Supporting
+  groups later is not a flag: it needs an allowlist of specific group ids, a
+  rule about which commands may run in front of an audience, and replies
+  addressed to the chat rather than to the sender. Until that exists it is
+  denied, not configurable.
+
 - Customers and unknown numbers reach `customer.ts` only. There is no branch
   that can run a CRM command for them.
 - `finalPrice`, `sellerContact` and `internalNotes` are not selected by any

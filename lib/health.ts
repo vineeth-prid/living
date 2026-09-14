@@ -2,14 +2,16 @@ import { sql } from "drizzle-orm";
 import { db, hasDatabase } from "./db";
 import { hasSmtp } from "./notify";
 import { hasStorage } from "./storage";
-
+import { hasOllama, ollamaModel } from "./ai/ollama";
+import { isWhatsAppEnabled } from "./integrations/whatsapp/config";
+import { whatsappProvider } from "./integrations/whatsapp/service";
 
 // §67. What is up, from the app's point of view.
 //
 // Every probe answers rather than throws: a health check that crashes when a
 // dependency is down is the one thing it must never do. Unconfigured is
 // reported as unconfigured, not as broken — this app runs deliberately without
-// SMTP or MinIO.
+// SMTP, MinIO, Ollama or WhatsApp.
 
 export type HealthRow = { label: string; ok: boolean; detail: string };
 
@@ -40,5 +42,10 @@ export async function systemHealth(): Promise<HealthRow[]> {
     }),
     probe("Storage", hasStorage(), "not configured", async () => "configured"),
     probe("Email", hasSmtp(), "not configured", async () => "configured"),
+    probe("Interpreter", hasOllama(), "not configured", async () => `Ollama · ${ollamaModel()}`),
+    probe("WhatsApp", isWhatsAppEnabled(), "disabled", async () => {
+      const info = await whatsappProvider().getSessionStatus();
+      return info.status;
+    }),
   ]);
 }

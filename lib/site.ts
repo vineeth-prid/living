@@ -101,6 +101,22 @@ export const nav = [
 export type NavItem = (typeof nav)[number];
 
 /**
+ * Where this deployment's own admin lives.
+ *
+ * `site.url` is the public, canonical address and has to stay production —
+ * canonical tags, OG images and JSON-LD all point there on purpose, from every
+ * environment. A staff link is the opposite: it has to point at the server the
+ * draft was actually created on. Sending a link to livingbyitr.com for a draft
+ * that only exists in staging is how a reviewer ends up looking at a listing
+ * that isn't there.
+ *
+ * So set APP_BASE_URL per environment. Unset, this is production, which is what
+ * it always was.
+ */
+const appBaseUrl = (): string =>
+  (process.env.APP_BASE_URL ?? site.url).replace(/\/+$/, "");
+
+/**
  * Where staff review a listing that is not on the website.
  *
  * Deliberately an admin path: a draft has no public URL and must not be given
@@ -108,7 +124,7 @@ export type NavItem = (typeof nav)[number];
  * leaks goes to a login screen rather than to an unpublished listing.
  */
 export const adminPropertyUrl = (id: string) =>
-  `${site.url}/admin/properties/${id}`;
+  `${appBaseUrl()}/admin/properties/${id}`;
 
 export const waLink = (msg?: string) =>
   `https://wa.me/${site.whatsapp}${msg ? `?text=${encodeURIComponent(msg)}` : ""}`;

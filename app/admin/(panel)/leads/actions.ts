@@ -20,6 +20,8 @@ import { fail, requireUser, succeed, type ActionResult } from "@/lib/auth/dal";
 import { audit } from "@/lib/audit";
 import { createLead, linkProperty, recordActivity } from "@/lib/leads";
 import { notifyLeadAssigned } from "@/lib/notify";
+import { notifyLeadAssigned as whatsappLeadAssigned } from "@/lib/crm/whatsapp/events";
+import { zonedDateTime } from "@/lib/time";
 import {
   addLeadNote,
   scheduleFollowUp,
@@ -341,6 +343,7 @@ export async function assignLead(
   // additive and, like the email above, cannot fail an assignment that has
   // already committed.
   if (employeeId && employeeId !== before.assignedToId) {
+    void whatsappLeadAssigned(id, employeeId);
   }
 
   touch(id);
@@ -437,8 +440,13 @@ export async function addFollowUp(
   if (!parsed.success) return fail("Pick a date and a follow-up type.");
   const input = parsed.data;
 
-  const dueAt = new Date(`${input.date}T${input.time || "09:00"}`);
-  if (Number.isNaN(dueAt.getTime())) return fail("That date isn't valid.");
+  // The date and time come off two form fields with no zone attached, and
+  // `new Date("2026-09-11T14:00")` reads that as the *server's* local time. On
+  // a UTC host that stored 2pm as 14:00Z, which renders to a reader in Kochi as
+  // 7:30pm — the booking was five and a half hours out, and only on the server.
+  // Staff type Kochi time, so it is read as Kochi time.
+  const dueAt = zonedDateTime(input.date, input.time || "09:00");
+  if (!dueAt || Number.isNaN(dueAt.getTime())) return fail("That date isn't valid.");
 
   // Employees schedule for themselves; only an admin can assign the task on.
   const assignedToId =

@@ -1,3 +1,4 @@
+import { endOfDay } from "./time";
 import {
   and,
   asc,
@@ -82,9 +83,9 @@ function filterClause(user: SessionUser, f: LeadFilters) {
     f.budgetMin ? gte(leads.budgetMax, f.budgetMin) : undefined,
     f.budgetMax ? lte(leads.budgetMin, f.budgetMax) : undefined,
     f.createdFrom ? gte(leads.createdAt, new Date(f.createdFrom)) : undefined,
-    f.createdTo ? lte(leads.createdAt, new Date(`${f.createdTo}T23:59:59`)) : undefined,
+    f.createdTo ? lte(leads.createdAt, endOfDay(f.createdTo) ?? new Date(f.createdTo)) : undefined,
     f.followUpBefore
-      ? lte(leads.nextFollowUpAt, new Date(`${f.followUpBefore}T23:59:59`))
+      ? lte(leads.nextFollowUpAt, endOfDay(f.followUpBefore) ?? new Date(f.followUpBefore))
       : undefined,
     f.q
       ? or(
