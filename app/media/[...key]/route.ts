@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { propertyMedia } from "@/lib/db/schema";
+import { propertyMedia, whatsappBroadcasts } from "@/lib/db/schema";
 import { getCurrentUser } from "@/lib/auth/dal";
 import { getObject, hasStorage } from "@/lib/storage";
 
@@ -33,8 +33,26 @@ export async function GET(
     .where(eq(propertyMedia.storageKey, storageKey))
     .limit(1);
 
+  /**
+   * A broadcast attachment is the one other thing served anonymously, because
+   * the fetch is made by the WhatsApp gateway and not by a signed-in browser.
+   *
+   * Narrow on purpose: the key has to match a `media_key` Living itself wrote
+   * on a broadcast row, so this cannot be used to read an expense receipt or
+   * an internal document. The random suffix lib/storage.ts puts in every key
+   * is what keeps the URL unguessable — and the file is one the operator chose
+   * to send to hundreds of people, so it is not a secret in any case.
+   */
+  const [broadcast] = media
+    ? [null]
+    : await db()
+        .select({ id: whatsappBroadcasts.id })
+        .from(whatsappBroadcasts)
+        .where(eq(whatsappBroadcasts.mediaKey, storageKey))
+        .limit(1);
+
   // Anything not in property_media — expense receipts, above all — is staff-only.
-  const isPublic = media?.isPublic === true;
+  const isPublic = media?.isPublic === true || Boolean(broadcast);
   if (!isPublic && !(await getCurrentUser())) {
     return new Response("Not found", { status: 404 });
   }

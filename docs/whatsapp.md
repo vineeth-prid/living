@@ -3,6 +3,9 @@
 Two-way WhatsApp for the CRM: staff run commands conversationally, customer
 messages become leads. Internal only — nothing on the public website changed.
 
+Broadcasts, the messaging inbox and model-written customer replies are built on
+top of this and documented separately in [broadcasts.md](./broadcasts.md).
+
 The CRM does not depend on this. With `OPENWA_ENABLED` unset the whole
 integration is inert and every other feature works exactly as before.
 
@@ -586,4 +589,11 @@ delete from whatsapp_webhook_events where received_at < now() - interval '30 day
 OpenWA is an unofficial gateway; account restriction cannot be ruled out. Use a
 dedicated number, keep `WHATSAPP_MAX_PER_MINUTE` low, and keep email working as
 the fallback — `lib/notify.ts` is untouched and still the primary notification
-channel. There is no bulk sending in this integration and none should be added.
+channel.
+
+This section used to end "there is no bulk sending in this integration and none
+should be added." Bulk sending has since been built, deliberately, and lives in
+[broadcasts.md](./broadcasts.md). The warning above still holds and matters more
+than it did: bulk patterns are what gets a number restricted, the same
+`WHATSAPP_MAX_PER_MINUTE` throttle governs broadcasts, and the guards that make
+it acceptable are in the data model rather than in a note like this one.

@@ -872,6 +872,17 @@ export const whatsappContacts = pgTable(
      * every row's meaning.
      */
     isAllowed: boolean("is_allowed").notNull().default(true),
+    /**
+     * When this number asked to stop receiving broadcasts (§B4).
+     *
+     * Deliberately separate from `isAllowed`. Those are different questions:
+     * "stop sending me offers" must not also stop Living answering their
+     * enquiry, and silencing a nuisance number must not read in the audit as
+     * the customer having opted out. One column answering both would make
+     * every broadcast a choice between spamming someone who asked to be left
+     * alone and ignoring a customer who didn't.
+     */
+    marketingOptOutAt: timestamp("marketing_opt_out_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -1055,5 +1066,160 @@ export const whatsappCommandExecutions = pgTable(
       t.conversationId,
       t.createdAt,
     ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Broadcasts (§B1–B12)
+//
+// One announcement, one media file, many recipients. The thing that makes this
+// not a spam cannon is all in the data model rather than in the UI: a campaign
+// is a queue of recipient rows, each one sent at the gateway's own pace and
+// each one individually accountable. Nothing here sends on insert.
+// ---------------------------------------------------------------------------
+
+export const BROADCAST_STATUSES = [
+  "draft",
+  // Queued and draining. The only status the sender picks rows up from.
+  "sending",
+  // Stopped by hand mid-flight. Resumable — queued rows keep their place.
+  "paused",
+  "completed",
+  // Stopped for good. Queued rows are abandoned, sent ones stay sent.
+  "cancelled",
+] as const;
+export type BroadcastStatus = (typeof BROADCAST_STATUSES)[number];
+
+export const BROADCAST_RECIPIENT_STATUSES = [
+  "queued",
+  /**
+   * Claimed by a sender and in flight.
+   *
+   * Exists so two senders cannot pick up the same row, and so a process that
+   * dies mid-send leaves the row visibly stuck rather than queued — a queued
+   * row would be sent again, and a duplicate WhatsApp message is worse than
+   * one that needs a human to press requeue.
+   *
+   * ponytail: stuck rows are requeued by hand from the broadcast report. A
+   * reaper that did it on a timer is the upgrade, and it needs a heartbeat
+   * column to tell "stuck" from "still going" — not worth it until a send
+   * actually dies in the middle.
+   */
+  "sending",
+  "sent",
+  "failed",
+  /** Opted out, unreachable, or a duplicate number — never attempted. */
+  "skipped",
+] as const;
+export type BroadcastRecipientStatus =
+  (typeof BROADCAST_RECIPIENT_STATUSES)[number];
+
+/**
+ * A broadcast: the media, the words, and who it is going to.
+ *
+ * The recipient list is materialised into `whatsapp_broadcast_recipients` at
+ * the moment it is created, never re-derived from the filter at send time. A
+ * filter re-run an hour later matches a different set of leads, so a campaign
+ * that paused and resumed would silently message people who were never in the
+ * audience the operator approved.
+ */
+export const whatsappBroadcasts = pgTable(
+  "whatsapp_broadcasts",
+  {
+    id: text("id").primaryKey(),
+    /** Internal label, never sent. "Diwali offer", "New Kakkanad tower". */
+    name: text("name").notNull(),
+    /** The message body — WhatsApp sends it as the media caption. */
+    body: text("body").notNull(),
+
+    // --- the attachment, optional: a text-only broadcast is still a broadcast
+    /** MinIO key, as lib/storage.ts returns it. Null for text-only. */
+    mediaKey: text("media_key"),
+    mediaMimeType: text("media_mime_type"),
+    mediaFilename: text("media_filename"),
+    /** image | video | document — decides how WhatsApp renders it. */
+    mediaKind: text("media_kind"),
+
+    status: text("status")
+      .$type<BroadcastStatus>()
+      .notNull()
+      .default("draft"),
+
+    /**
+     * What the operator picked, kept verbatim for the record. Read by nothing
+     * at send time — see the note on the table above.
+     */
+    audience: jsonb("audience"),
+
+    /** Denormalised counters so the list page is one query, not N+1. */
+    totalCount: integer("total_count").notNull().default(0),
+    sentCount: integer("sent_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    skippedCount: integer("skipped_count").notNull().default(0),
+
+    createdById: text("created_by_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("whatsapp_broadcasts_status_idx").on(t.status, t.createdAt),
+    index("whatsapp_broadcasts_created_idx").on(t.createdAt),
+  ],
+);
+
+/**
+ * One row per person per broadcast — the queue, and afterwards the receipt.
+ *
+ * The unique index on (broadcast, phone) is the real guarantee: a lead that
+ * appears twice in the selection, or a number shared by two leads, cannot be
+ * messaged twice however the audience was assembled.
+ */
+export const whatsappBroadcastRecipients = pgTable(
+  "whatsapp_broadcast_recipients",
+  {
+    id: text("id").primaryKey(),
+    broadcastId: text("broadcast_id")
+      .notNull()
+      .references(() => whatsappBroadcasts.id, { onDelete: "cascade" }),
+    leadId: text("lead_id").references(() => leads.id, {
+      onDelete: "set null",
+    }),
+    /** Canonical E.164 without the plus, resolved when the list was built. */
+    phoneNumber: text("phone_number").notNull(),
+    /** Snapshotted so the report still reads properly if the lead is renamed. */
+    name: text("name"),
+    status: text("status")
+      .$type<BroadcastRecipientStatus>()
+      .notNull()
+      .default("queued"),
+    /** Why it was skipped, or why the send failed. Shown in the report. */
+    reason: text("reason"),
+    attempts: integer("attempts").notNull().default(0),
+    /** The whatsapp_messages row, so the broadcast joins the normal timeline. */
+    messageId: text("message_id"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_broadcast_recipients_phone_idx").on(
+      t.broadcastId,
+      t.phoneNumber,
+    ),
+    // The sender's only query: the next few queued rows of a sending campaign.
+    index("whatsapp_broadcast_recipients_queue_idx").on(
+      t.broadcastId,
+      t.status,
+    ),
+    index("whatsapp_broadcast_recipients_lead_idx").on(t.leadId),
   ],
 );

@@ -43,6 +43,13 @@
       "when": 1787204656772,
       "tag": "0005_wealthy_lorna_dane",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790934778166,
+      "tag": "0006_broad_enchantress",
+      "breakpoints": true
     }
   ]
 }

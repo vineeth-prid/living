@@ -13,6 +13,8 @@ import { formatPhone } from "@/lib/integrations/whatsapp/phone";
 import { sendText } from "@/lib/integrations/whatsapp/service";
 import { resolveProperty } from "./resolve";
 import { notifyWhatsAppEnquiry } from "./events";
+import { assistantAnswer } from "./assistant";
+import { setMarketingOptOut } from "./audience";
 import { t } from "./templates";
 
 // §1/§5/§8. The customer path.
@@ -33,6 +35,32 @@ export async function handleCustomerMessage(input: {
 }): Promise<void> {
   const text = input.text.trim();
   if (!text) return;
+
+  // §B4. "STOP" is answered before anything else, and it is the only word in
+  // this file that is acted on before the message is even filed against a
+  // lead. Someone asking to be left alone must not have that request queued
+  // behind property resolution, lead creation or a model call — any of which
+  // can fail and leave them opted in.
+  //
+  // It only ever silences broadcasts, never the thread: they can still ask a
+  // question tomorrow and get an answer, which is what makes this an opt-out
+  // rather than a block.
+  if (STOP_WORDS.test(text)) {
+    await setMarketingOptOut(input.fromPhone, true);
+    if (input.leadId) {
+      await recordActivity({
+        leadId: input.leadId,
+        kind: "whatsapp_inbound",
+        summary: "Opted out of WhatsApp broadcasts.",
+      });
+    }
+    await sendText({
+      to: input.fromPhone,
+      text: t.optedOut(),
+      conversationId: input.conversationId,
+    });
+    return;
+  }
 
   // §4. What they are asking about, if it can be told without guessing.
   const property = await propertyInContext(input.conversationId, text);
@@ -77,6 +105,37 @@ export async function handleCustomerMessage(input: {
     return;
   }
 
+  // §A1. Then the model, if it is switched on and the question is one it can
+  // answer from Living's own published facts. It is tried AFTER the
+  // deterministic answer above and never instead of it: availability comes out
+  // of the database, where it is true, rather than out of a model that was
+  // handed the same row and might round it.
+  //
+  // A handoff is not a failure — it is the normal outcome for anything the
+  // facts do not cover, and it falls through to the acknowledgement below
+  // exactly as it did before there was a model.
+  const assisted = await assistantAnswer({
+    conversationId: input.conversationId,
+    text,
+    senderName: input.senderName,
+  });
+
+  if (assisted.kind === "answer") {
+    await sendText({
+      to: input.fromPhone,
+      text: assisted.text,
+      conversationId: input.conversationId,
+    });
+    await recordActivity({
+      leadId,
+      kind: "whatsapp_outbound",
+      // Recorded as the assistant's, not a colleague's. Someone reading the
+      // timeline next week has to be able to tell which replies a person sent.
+      summary: `Auto-reply (${assisted.model}): ${assisted.text.slice(0, 280)}`,
+    });
+    return;
+  }
+
   // §6. Otherwise acknowledge once, on first contact only. A reply to every
   // message is an auto-responder, which is how a number gets reported.
   if (isNew) {
@@ -87,6 +146,22 @@ export async function handleCustomerMessage(input: {
     });
   }
 }
+
+/**
+ * §B4. The words that mean "stop messaging me".
+ *
+ * Anchored to the whole message on purpose. An opt-out is a one-word reply;
+ * matching "stop" anywhere in a sentence would read "don't stop looking for a
+ * 3BHK" as a request to be silenced, and a customer silenced by mistake is one
+ * nobody finds out about until the deal is gone.
+ *
+ * ponytail: so "please stop sending me these offers" is NOT caught here — it
+ * reaches a human, and the panel has a button to opt them out. Widening this
+ * wants intent classification, not a longer regex; the model is right there if
+ * that ever becomes worth it.
+ */
+export const STOP_WORDS =
+  /^(?:please\s+)?(stop|unsubscribe|opt[ -]?out|remove me|do ?not ?disturb|dnd|no more messages?|stop messages?|stop sending)[.!]*$/i;
 
 /**
  * §3. A lead already on file for this number.

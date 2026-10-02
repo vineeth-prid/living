@@ -256,6 +256,16 @@ export const t = {
    * §6. Short, and specific when it can be. Nothing internal: a reference and
    * a promise to call, which is all a first reply should ever be.
    */
+  /**
+   * §B4. Confirming an opt-out.
+   *
+   * It says what actually happened — offers stop, the conversation does not —
+   * because "you have been unsubscribed" would read as "we will not reply to
+   * you again", and someone who still wants a 3BHK would stop writing in.
+   */
+  optedOut: () =>
+    "Done — we won't send you any more offers or updates. You can still message us here any time, and we'll reply.",
+
   customerAcknowledged: (reference: string | null) =>
     reference
       ? `Thanks for your interest in ${reference}. Our team will get in touch with you shortly.`

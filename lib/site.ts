@@ -126,6 +126,19 @@ const appBaseUrl = (): string =>
 export const adminPropertyUrl = (id: string) =>
   `${appBaseUrl()}/admin/properties/${id}`;
 
+/**
+ * The absolute URL the WhatsApp gateway fetches a broadcast attachment from.
+ *
+ * Absolute because the fetch is made by OpenWA on the VPS, not by a browser on
+ * this origin — a relative /media path resolves against the gateway and 404s.
+ *
+ * Anonymous on purpose, and the only uploaded media that is: app/media reads
+ * the broadcast row to decide, so the key must be one Living actually stored
+ * for a broadcast. The random suffix in the key is what keeps it unguessable.
+ */
+export const broadcastMediaUrl = (storageKey: string) =>
+  `${appBaseUrl()}/media/${storageKey.replace(/^\/+/, "")}`;
+
 export const waLink = (msg?: string) =>
   `https://wa.me/${site.whatsapp}${msg ? `?text=${encodeURIComponent(msg)}` : ""}`;
 export const telLink = `tel:${site.phoneRaw}`;

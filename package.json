@@ -22,6 +22,7 @@
     "check:whatsapp:db": "tsx scripts/check-whatsapp-db.ts",
     "check:whatsapp:connection": "tsx scripts/check-whatsapp-connection.ts",
     "check:commands": "tsx scripts/check-commands.ts",
+    "check:broadcast": "tsx scripts/check-broadcast.ts",
     "check:intent": "tsx scripts/check-intent.ts"
   },
   "dependencies": {

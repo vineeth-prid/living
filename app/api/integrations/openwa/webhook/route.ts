@@ -9,6 +9,7 @@ import {
   whatsappProvider,
 } from "@/lib/integrations/whatsapp/service";
 import { processInboundEvent } from "@/lib/integrations/whatsapp/inbound";
+import { drainBroadcasts } from "@/lib/crm/whatsapp/broadcast";
 
 // §4/§5/§6. The only untrusted entrance to the CRM.
 //
@@ -79,6 +80,13 @@ export async function POST(request: Request) {
       // makes it the cheapest moment to drain anything that failed while it
       // wasn't. No scheduler needed, and no queue to run.
       await retryFailedOutbound(5);
+      // §B5. Same reasoning, same moment: a broadcast in flight gets another
+      // batch out. A busy day drains it on its own, and a quiet one leaves it
+      // to the admin page — which is the other place drain runs from.
+      //
+      // Deliberately a small batch. This is a webhook, not a worker: it has to
+      // finish promptly, and the queue is still there on the next delivery.
+      await drainBroadcasts(5);
       await db()
         .update(whatsappWebhookEvents)
         .set({ status: "processed", processedAt: new Date() })

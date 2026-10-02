@@ -62,6 +62,16 @@ export type LeadFilters = {
   page?: number;
 };
 
+/**
+ * Exported because the broadcast audience is selected with the same filters the
+ * leads list uses (lib/crm/whatsapp/audience.ts). A second copy would be a
+ * second definition of "qualified leads in Kakkanad" — and the one that
+ * disagreed would be the one deciding who gets messaged.
+ */
+export function leadFilterClause(user: SessionUser, f: LeadFilters) {
+  return filterClause(user, f);
+}
+
 function filterClause(user: SessionUser, f: LeadFilters) {
   return and(
     isNull(leads.deletedAt),

@@ -7,9 +7,11 @@ import {
   Building2,
   ChartNoAxesColumn,
   ClipboardList,
+  Inbox,
   KanbanSquare,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Menu,
   MessageCircle,
   ReceiptIndianRupee,
@@ -64,6 +66,9 @@ export function Sidebar({
         { href: "/admin/leads", label: "All Leads", icon: Users },
         { href: "/admin/leads/pipeline", label: "Pipeline", icon: KanbanSquare },
         { href: "/admin/followups", label: "Follow-ups", icon: ClipboardList },
+        // The inbox, not the broadcaster: answering a customer is an employee's
+        // job, and the page itself only shows the admin controls to an admin.
+        { href: "/admin/messaging/inbox", label: "Inbox", icon: Inbox },
       ],
     },
     ...(role === "admin"
@@ -74,6 +79,7 @@ export function Sidebar({
               { href: "/admin/expenses", label: "Expenses", icon: ReceiptIndianRupee },
               { href: "/admin/employees", label: "Employees", icon: UserSquare2 },
               { href: "/admin/reports", label: "Reports", icon: ChartNoAxesColumn },
+              { href: "/admin/messaging", label: "Broadcasts", icon: Megaphone },
               { href: "/admin/settings", label: "Settings", icon: Settings },
               { href: "/admin/settings/integrations/whatsapp", label: "WhatsApp", icon: MessageCircle },
             ],
@@ -87,14 +93,22 @@ export function Sidebar({
   const SIBLINGS = [
     "/admin/properties/new",
     "/admin/properties/import",
+    "/admin/messaging/inbox",
     "/admin/settings/integrations/whatsapp",
   ];
+
+  // Matched as a prefix, not an exact string. /admin/messaging/inbox/[id] is a
+  // sibling route too, and an exact check lit both Broadcasts and Inbox on it.
+  const inSiblingSection = (path: string) =>
+    SIBLINGS.some((sibling) => path === sibling || path.startsWith(`${sibling}/`));
 
   const isActive = (href: string) =>
     pathname === href ||
     (!SIBLINGS.includes(href) &&
-      !SIBLINGS.includes(pathname) &&
-      pathname.startsWith(`${href}/`));
+      !inSiblingSection(pathname) &&
+      pathname.startsWith(`${href}/`)) ||
+    // A sibling entry stays lit on its own nested routes.
+    (SIBLINGS.includes(href) && pathname.startsWith(`${href}/`));
 
   return (
     <>
