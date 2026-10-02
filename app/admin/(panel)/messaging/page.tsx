@@ -12,8 +12,18 @@ import {
   AUDIENCE_PRESETS,
   optedOutContacts,
 } from "@/lib/crm/whatsapp/audience";
-import { listBroadcasts, queuedTotal } from "@/lib/crm/whatsapp/broadcast";
+import {
+  listBroadcasts,
+  queuedTotal,
+  releaseDueBroadcasts,
+  scheduledBroadcasts,
+} from "@/lib/crm/whatsapp/broadcast";
+import {
+  HEARTBEAT_STALE_MINUTES,
+  broadcastHeartbeat,
+} from "@/lib/crm/whatsapp/scheduler";
 import { maskPhone } from "@/lib/integrations/whatsapp/phone";
+import { formatDateTime, istDate, istDatePlusDays } from "@/lib/time";
 import {
   Badge,
   Card,
@@ -26,7 +36,7 @@ import {
 } from "@/components/admin/ui";
 import { dateTime } from "@/components/admin/crm";
 import { Composer } from "./composer";
-import { OptOutRow, QueueControls } from "./queue";
+import { OptOutRow, QueueControls, SchedulerHealth } from "./queue";
 
 export const metadata = { title: "Messaging" };
 
@@ -38,10 +48,37 @@ export default async function MessagingPage() {
 
   const configured = isWhatsAppEnabled();
 
-  const [broadcasts, queued, optOuts, employees, sources, cities] =
-    await Promise.all([
+  /**
+   * §S3. Opening this page is itself a scheduler trigger.
+   *
+   * Cheap — one conditional UPDATE that matches nothing most of the time — and
+   * it means an admin who notices a broadcast is overdue fixes it by looking at
+   * the page. Combined with the inbound webhook, the cron is the primary
+   * trigger rather than the only one, which is the whole answer to "the cron
+   * must not fail": it can, and the schedule still moves.
+   */
+  if (configured) await releaseDueBroadcasts();
+
+  // The date pickers in the composer offer Kochi dates, not the browser's — a
+  // laptop in Dubai must not be allowed to pick a date that is already over
+  // here, and a component may not read a clock during render anyway.
+  const today = istDate();
+  const tomorrow = istDatePlusDays(1);
+
+  const [
+    broadcasts,
+    queued,
+    scheduled,
+    heartbeat,
+    optOuts,
+    employees,
+    sources,
+    cities,
+  ] = await Promise.all([
       listBroadcasts(20),
       queuedTotal(),
+      scheduledBroadcasts(),
+      broadcastHeartbeat(),
       optedOutContacts(),
       employeeOptions(),
       leadSourceOptions(),
@@ -97,11 +134,52 @@ export default async function MessagingPage() {
             .filter((city): city is string => Boolean(city))}
           configured={configured}
           storageReady={hasStorage()}
+          today={today}
+          tomorrow={tomorrow}
         />
       </div>
 
-      <Card title="Queue" className="mb-6">
-        <QueueControls queued={queued} />
+      <Card title="Queue and scheduler" className="mb-6">
+        <div className="flex flex-col gap-4">
+          <SchedulerHealth
+            lastRunLabel={relative(heartbeat.lastRunAt)}
+            lastOkLabel={relative(heartbeat.lastOkAt)}
+            stale={heartbeat.stale}
+            neverRun={heartbeat.neverRun}
+            lastError={heartbeat.lastError}
+            consecutiveFailures={heartbeat.consecutiveFailures}
+            staleAfterMinutes={HEARTBEAT_STALE_MINUTES}
+          />
+
+          <QueueControls queued={queued} scheduled={scheduled.length} />
+
+          {scheduled.length > 0 && (
+            <ul className="flex flex-col gap-1 border-t border-stone-200 pt-3">
+              {scheduled.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="flex flex-wrap items-center justify-between gap-2 text-xs"
+                >
+                  <Link
+                    href={`/admin/messaging/${entry.id}`}
+                    className="font-medium text-stone-800 hover:text-pine-700"
+                  >
+                    {entry.name}
+                  </Link>
+                  <span className="text-stone-500">
+                    {entry.totalCount - entry.skippedCount} recipients ·{" "}
+                    {entry.scheduledFor ? formatDateTime(entry.scheduledFor) : "—"}
+                    {entry.overdue && (
+                      <span className="ml-1 text-[var(--color-danger)]">
+                        · overdue
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </Card>
 
       <h2 className="mb-3 text-sm font-semibold text-stone-900">Broadcasts</h2>
@@ -226,6 +304,7 @@ export default async function MessagingPage() {
 }
 
 function statusTone(status: string) {
+  if (status === "scheduled") return "blue" as const;
   if (status === "completed") return "green" as const;
   if (status === "sending") return "blue" as const;
   if (status === "cancelled") return "red" as const;
@@ -233,3 +312,26 @@ function statusTone(status: string) {
   return "neutral" as const;
 }
 
+
+/**
+ * "4 minutes ago", for the heartbeat line.
+ *
+ * Relative rather than absolute on purpose: the question this answers is "is it
+ * running?", and "11:42" needs the reader to work out what time it is now
+ * before it means anything.
+ */
+function relative(at: Date | null): string {
+  if (!at) return "never";
+
+  const seconds = Math.round((Date.now() - at.getTime()) / 1000);
+  if (seconds < 90) return "just now";
+
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minutes ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 36) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+
+  // Past a day and a half, the date is more use than a count of hours.
+  return formatDateTime(at);
+}

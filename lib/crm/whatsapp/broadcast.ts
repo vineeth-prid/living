@@ -15,16 +15,21 @@ import type { Candidate } from "./audience";
 
 // §B1/§B5. The broadcast engine.
 //
-// There is no scheduler and no broker, for the same reason retryFailedOutbound
-// has neither: `whatsapp_broadcast_recipients` IS the queue. A broadcast is
-// created as rows, and `drainBroadcasts` sends a bounded batch whenever the
-// system is awake — from the admin action that started it, and from the inbound
-// webhook, which fires every time a message arrives.
+// There is no broker, for the same reason retryFailedOutbound has none:
+// `whatsapp_broadcast_recipients` IS the queue. A broadcast is created as rows,
+// and `drainBroadcasts` sends a bounded batch whenever the system is awake.
 //
 // That matters more than it sounds. The gateway allows twenty messages a
 // minute (OUTBOUND_RATE), so a 500-person broadcast is nearly half an hour of
 // wall clock. Nothing in a web request can hold that open, so nothing tries:
 // each pass sends what it can and leaves the rest queued exactly where it was.
+//
+// Four things call into this file, and none of them is the only one that can:
+// the cron route via scheduler.ts, the inbound webhook, the admin action that
+// starts a broadcast, and a button on the panel. Every entry point is
+// idempotent and safe to run concurrently (see releaseDueBroadcasts and
+// `claim` below), which is what makes a missed tick a delay rather than a
+// broadcast that never went.
 
 /** How many recipients one drain pass will attempt. */
 const BATCH = Number(process.env.WHATSAPP_BROADCAST_BATCH ?? 15);
@@ -40,6 +45,14 @@ export type NewBroadcast = {
   } | null;
   audience: unknown;
   createdById: string;
+  /**
+   * When it should go out, if a time was chosen in the composer.
+   *
+   * Stored on the draft without arming it — see the note in the create action.
+   * The review page offers this as the time to arm for, so the recipient list
+   * is still seen before anything can go out.
+   */
+  scheduledFor?: Date | null;
 };
 
 /**
@@ -67,6 +80,7 @@ export async function createBroadcast(
       mediaFilename: input.media?.filename ?? null,
       mediaKind: input.media?.kind ?? null,
       status: "draft",
+      scheduledFor: input.scheduledFor ?? null,
       audience: input.audience ?? null,
       totalCount: candidates.length,
       skippedCount: skipped.length,
@@ -113,7 +127,7 @@ export async function createBroadcast(
   return { id, queued: queued.length, skipped: skipped.length };
 }
 
-/** Moves a draft or paused broadcast into the sending state. */
+/** Moves a draft, scheduled or paused broadcast into the sending state. */
 export async function startBroadcast(id: string): Promise<string | null> {
   const [row] = await db()
     .select({ status: whatsappBroadcasts.status, startedAt: whatsappBroadcasts.startedAt })
@@ -135,6 +149,189 @@ export async function startBroadcast(id: string): Promise<string | null> {
     })
     .where(eq(whatsappBroadcasts.id, id));
   return null;
+}
+
+// --- scheduling -----------------------------------------------------------
+
+/**
+ * How late a scheduled broadcast may still go out (§S4).
+ *
+ * This is the guard nobody asks for and everybody wants afterwards. If the
+ * server was down overnight, firing a "this weekend only" offer on Monday
+ * morning is worse than not firing it — the message is wrong, and it arrives
+ * looking like a system nobody is watching. Past this window the broadcast is
+ * parked for a human instead, with everything still intact so it can be
+ * rescheduled in one click.
+ */
+export const SCHEDULE_GRACE_MINUTES = Number(
+  process.env.WHATSAPP_SCHEDULE_GRACE_MINUTES ?? 180,
+);
+
+/** Arms a broadcast for a time in the future. */
+export async function scheduleBroadcast(
+  id: string,
+  when: Date,
+): Promise<string | null> {
+  const [row] = await db()
+    .select({ status: whatsappBroadcasts.status })
+    .from(whatsappBroadcasts)
+    .where(eq(whatsappBroadcasts.id, id))
+    .limit(1);
+
+  if (!row) return "That broadcast no longer exists.";
+  if (row.status === "completed") return "That broadcast has already finished.";
+  if (row.status === "sending") {
+    return "That broadcast is already sending. Pause it first.";
+  }
+  if (when.getTime() <= Date.now()) {
+    return "That time has already passed. Pick a later one, or send it now.";
+  }
+
+  await db()
+    .update(whatsappBroadcasts)
+    .set({ status: "scheduled", scheduledFor: when, updatedAt: new Date() })
+    .where(eq(whatsappBroadcasts.id, id));
+  return null;
+}
+
+/** Disarms a scheduled broadcast, leaving it as a draft with its list intact. */
+export async function unscheduleBroadcast(id: string): Promise<string | null> {
+  const rows = await db()
+    .update(whatsappBroadcasts)
+    .set({ status: "draft", scheduledFor: null, updatedAt: new Date() })
+    .where(
+      and(
+        eq(whatsappBroadcasts.id, id),
+        // Only an armed one. Racing the scheduler must not pull a broadcast
+        // back out of `sending` and leave half its recipients messaged.
+        eq(whatsappBroadcasts.status, "scheduled"),
+      ),
+    )
+    .returning({ id: whatsappBroadcasts.id });
+
+  return rows.length > 0
+    ? null
+    : "That broadcast is not waiting on a schedule any more — it may already have started.";
+}
+
+export type ReleaseResult = {
+  /** Broadcasts moved from `scheduled` to `sending` on this tick. */
+  released: string[];
+  /** Ones parked because they were past the grace window. */
+  missed: string[];
+};
+
+/**
+ * Releases every armed broadcast whose time has come. The heart of scheduling.
+ *
+ * Two conditional UPDATEs, and the conditions *are* the locking. Postgres
+ * evaluates `status = 'scheduled'` against the row it has locked for the
+ * update, so of two callers arriving together — the cron tick and an inbound
+ * webhook, say — exactly one sees the row as `scheduled` and gets it back from
+ * RETURNING. The other sees `sending` and gets nothing. No advisory lock, no
+ * leader election, and no window in which both start the same broadcast.
+ *
+ * It is also inherently catch-up: the query asks "which are due?", not "which
+ * became due since the last tick". A tick that never ran delays a broadcast
+ * rather than dropping it, and the next trigger of any kind picks it up. That
+ * is what makes a missed cron survivable instead of silent.
+ *
+ * Never throws.
+ */
+export async function releaseDueBroadcasts(): Promise<ReleaseResult> {
+  const grace = sql`now() - (${SCHEDULE_GRACE_MINUTES} * interval '1 minute')`;
+
+  try {
+    // Too late first. Doing it after the release would mean a broadcast three
+    // days overdue was already sending by the time this ran.
+    const missed = await db()
+      .update(whatsappBroadcasts)
+      .set({ status: "paused", updatedAt: new Date() })
+      .where(
+        and(
+          eq(whatsappBroadcasts.status, "scheduled"),
+          sql`${whatsappBroadcasts.scheduledFor} < ${grace}`,
+        ),
+      )
+      .returning({ id: whatsappBroadcasts.id });
+
+    const released = await db()
+      .update(whatsappBroadcasts)
+      .set({
+        status: "sending",
+        // coalesce, so a rescheduled broadcast keeps the time it first started
+        // rather than claiming it began on its second attempt.
+        startedAt: sql`coalesce(${whatsappBroadcasts.startedAt}, now())`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(whatsappBroadcasts.status, "scheduled"),
+          // Postgres decides what "now" is, not the app server. One clock, and
+          // it is the one the timestamps were written against.
+          sql`${whatsappBroadcasts.scheduledFor} <= now()`,
+          sql`${whatsappBroadcasts.scheduledFor} >= ${grace}`,
+        ),
+      )
+      .returning({ id: whatsappBroadcasts.id });
+
+    return {
+      released: released.map((row) => row.id),
+      missed: missed.map((row) => row.id),
+    };
+  } catch (error) {
+    // Called from a webhook's after() and from a page render, where throwing
+    // would take down something unrelated to scheduling.
+    console.error("[whatsapp] releasing scheduled broadcasts failed", error);
+    return { released: [], missed: [] };
+  }
+}
+
+/** Armed broadcasts, soonest first, for the panel. */
+export async function scheduledBroadcasts() {
+  return db()
+    .select({
+      id: whatsappBroadcasts.id,
+      name: whatsappBroadcasts.name,
+      scheduledFor: whatsappBroadcasts.scheduledFor,
+      totalCount: whatsappBroadcasts.totalCount,
+      skippedCount: whatsappBroadcasts.skippedCount,
+      /**
+       * Due but still armed — so something should have released it by now.
+       *
+       * Decided by Postgres rather than by the page, for the same reason the
+       * release query is: one clock, and it is the one the release compares
+       * against. A page working this out from its own `Date.now()` could call a
+       * broadcast overdue that the scheduler does not yet consider due.
+       */
+      overdue: sql<boolean>`${whatsappBroadcasts.scheduledFor} < now()`,
+    })
+    .from(whatsappBroadcasts)
+    .where(eq(whatsappBroadcasts.status, "scheduled"))
+    .orderBy(whatsappBroadcasts.scheduledFor)
+    .limit(20);
+}
+
+/**
+ * §S5. A broadcast that was armed, never went, and is now out of its window.
+ *
+ * Derived rather than stored. A paused broadcast that never started and whose
+ * time is well past is one the scheduler failed to fire — which is exactly the
+ * thing the operator has to be told about, and a column recording it would be
+ * one more piece of state to keep true.
+ */
+export function missedItsWindow(broadcast: {
+  status: string;
+  startedAt: Date | null;
+  scheduledFor: Date | null;
+}): boolean {
+  return (
+    broadcast.status === "paused" &&
+    broadcast.startedAt === null &&
+    broadcast.scheduledFor !== null &&
+    broadcast.scheduledFor.getTime() <
+      Date.now() - SCHEDULE_GRACE_MINUTES * 60_000
+  );
 }
 
 /**
@@ -404,6 +601,7 @@ export async function listBroadcasts(limit = 30) {
       sentCount: whatsappBroadcasts.sentCount,
       failedCount: whatsappBroadcasts.failedCount,
       skippedCount: whatsappBroadcasts.skippedCount,
+      scheduledFor: whatsappBroadcasts.scheduledFor,
       createdAt: whatsappBroadcasts.createdAt,
       startedAt: whatsappBroadcasts.startedAt,
       completedAt: whatsappBroadcasts.completedAt,
@@ -431,6 +629,7 @@ export async function getBroadcast(id: string) {
       sentCount: whatsappBroadcasts.sentCount,
       failedCount: whatsappBroadcasts.failedCount,
       skippedCount: whatsappBroadcasts.skippedCount,
+      scheduledFor: whatsappBroadcasts.scheduledFor,
       createdAt: whatsappBroadcasts.createdAt,
       startedAt: whatsappBroadcasts.startedAt,
       completedAt: whatsappBroadcasts.completedAt,

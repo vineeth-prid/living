@@ -1080,6 +1080,16 @@ export const whatsappCommandExecutions = pgTable(
 
 export const BROADCAST_STATUSES = [
   "draft",
+  /**
+   * Armed for a time in the future. Nothing is sent until `scheduled_for`
+   * passes and something releases it.
+   *
+   * Distinct from `draft` on purpose: a draft is unfinished and a scheduled
+   * broadcast is finished and waiting. Only this status is picked up by the
+   * release query, so an abandoned draft with a date left in the field can
+   * never go out on its own.
+   */
+  "scheduled",
   // Queued and draining. The only status the sender picks rows up from.
   "sending",
   // Stopped by hand mid-flight. Resumable — queued rows keep their place.
@@ -1157,6 +1167,19 @@ export const whatsappBroadcasts = pgTable(
     failedCount: integer("failed_count").notNull().default(0),
     skippedCount: integer("skipped_count").notNull().default(0),
 
+    /**
+     * When an armed broadcast should start sending (§S1).
+     *
+     * Stored as an instant, entered as a Kochi wall clock — lib/time.ts does
+     * that conversion, the same one follow-ups use. A naive timestamp here
+     * would mean "10am" was the server's 10am, which on a UTC host is 3:30pm
+     * in Kochi: a Diwali offer going out after dinner.
+     *
+     * Kept after the send too, so the report can say what time was asked for
+     * rather than only what time it actually went.
+     */
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+
     createdById: text("created_by_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -1172,8 +1195,39 @@ export const whatsappBroadcasts = pgTable(
   (t) => [
     index("whatsapp_broadcasts_status_idx").on(t.status, t.createdAt),
     index("whatsapp_broadcasts_created_idx").on(t.createdAt),
+    // The release query runs on every scheduler tick and asks exactly this:
+    // which armed broadcasts are due? Without the index that is a scan of
+    // every broadcast ever sent, several times a minute, forever.
+    index("whatsapp_broadcasts_due_idx").on(t.status, t.scheduledFor),
   ],
 );
+
+/**
+ * When each background job last ran, and whether it worked.
+ *
+ * One row per job, upserted on every tick. This exists because "the cron must
+ * not fail" is not a thing code can promise — a crontab can be removed, a
+ * container can be rebuilt without it, a secret can be rotated — so the system
+ * has to be able to say *when it last ran* rather than assume it is running.
+ * Without this a dead scheduler looks exactly like a quiet week, and the way
+ * you find out is a customer who never got the offer.
+ *
+ * Deliberately generic and tiny. It is not a job queue: nothing is dispatched
+ * from here, and losing the table costs the panel its heartbeat reading and
+ * nothing else.
+ */
+export const jobRuns = pgTable("job_runs", {
+  /** The job's own name, e.g. "whatsapp.broadcast_tick". */
+  name: text("name").primaryKey(),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Last run that finished without throwing. Lags lastRunAt when broken. */
+  lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  /** What the run did — released, sent, failed. For the panel to show. */
+  detail: jsonb("detail"),
+  /** Resets to 0 on success, so a sustained outage is distinguishable. */
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+});
 
 /**
  * One row per person per broadcast — the queue, and afterwards the receipt.

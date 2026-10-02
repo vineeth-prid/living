@@ -30,11 +30,16 @@ import {
 import {
   createBroadcast,
   drainBroadcasts,
+  releaseDueBroadcasts,
   requeueFailed,
   requeueStuck,
+  scheduleBroadcast,
   setBroadcastStatus,
   startBroadcast,
+  unscheduleBroadcast,
 } from "@/lib/crm/whatsapp/broadcast";
+import { runBroadcastTick } from "@/lib/crm/whatsapp/scheduler";
+import { formatDateTime, zonedDateTime } from "@/lib/time";
 
 // §B6. Admin-only, every one of them. A bulk send is the single most damaging
 // thing this panel can do — a wrong audience cannot be unsent, and the number
@@ -197,11 +202,24 @@ export async function createBroadcastAction(
     };
   }
 
+  // §S1. A date typed in the composer is carried through but NOT armed here.
+  // It becomes the time the review page offers to arm, so the one real safety
+  // property survives scheduling: the recipient list is seen and the count
+  // typed back before anything can go out, whether that is now or on Sunday.
+  const when = scheduleFrom(formData);
+  if (when === "invalid") {
+    return fail("That is not a date and time I can read.");
+  }
+  if (when && when.getTime() <= Date.now()) {
+    return fail("That time has already passed. Pick a later one.");
+  }
+
   const { id, queued, skipped } = await createBroadcast(
     {
       name,
       body,
       media,
+      scheduledFor: when,
       audience:
         mode === "picked"
           ? { mode: "picked", count: counts.sendable }
@@ -216,13 +234,114 @@ export async function createBroadcastAction(
     action: "whatsapp.broadcast_created",
     entity: "whatsapp_broadcast",
     entityId: id,
-    after: { name, queued, skipped, hasMedia: Boolean(media) },
+    after: {
+      name,
+      queued,
+      skipped,
+      hasMedia: Boolean(media),
+      scheduledFor: when?.toISOString() ?? null,
+    },
   });
 
   revalidatePath(PANEL);
   return succeed({
     id,
     message: `Ready: ${queued} to send${skipped > 0 ? `, ${skipped} skipped` : ""}.`,
+  });
+}
+
+// --- scheduling -----------------------------------------------------------
+
+/**
+ * §S1. Arms a broadcast for a date and time in Kochi.
+ *
+ * The date and time arrive as the two strings the native pickers produce, and
+ * `zonedDateTime` is the same conversion a follow-up goes through. That matters
+ * more than it looks: `new Date("2026-10-05T10:00")` is the *server's* 10am, so
+ * on a UTC host a Diwali offer scheduled for breakfast goes out after dinner.
+ */
+export async function scheduleBroadcastAction(
+  id: string,
+  date: string,
+  time: string,
+): Promise<ActionResult<{ message: string }>> {
+  const actor = await adminActor();
+
+  if (!isWhatsAppEnabled()) {
+    return fail("WhatsApp is not configured, so nothing can be scheduled.");
+  }
+
+  const when = zonedDateTime(date, time || "10:00");
+  if (!when) return fail("That is not a date and time I can read.");
+
+  const problem = await scheduleBroadcast(id, when);
+  if (problem) return fail(problem);
+
+  await audit({
+    actorId: actor.id,
+    action: "whatsapp.broadcast_scheduled",
+    entity: "whatsapp_broadcast",
+    entityId: id,
+    after: { scheduledFor: when.toISOString() },
+  });
+
+  revalidatePath(PANEL);
+  revalidatePath(`${PANEL}/${id}`);
+  return succeed({
+    message: `Armed for ${formatDateTime(when)}. Nothing goes out before then.`,
+  });
+}
+
+/** Disarms it, leaving the draft and its recipient list untouched. */
+export async function unscheduleBroadcastAction(
+  id: string,
+): Promise<ActionResult<{ message: string }>> {
+  const actor = await adminActor();
+
+  const problem = await unscheduleBroadcast(id);
+  if (problem) return fail(problem);
+
+  await audit({
+    actorId: actor.id,
+    action: "whatsapp.broadcast_unscheduled",
+    entity: "whatsapp_broadcast",
+    entityId: id,
+  });
+
+  revalidatePath(PANEL);
+  revalidatePath(`${PANEL}/${id}`);
+  return succeed({
+    message: "Schedule cleared. It is a draft again, with its list intact.",
+  });
+}
+
+/**
+ * §S3. Runs a scheduler tick by hand.
+ *
+ * The button for when the panel says the heartbeat is stale: it proves whether
+ * sending works at all, independently of whether the cron is reaching the
+ * route. Identical to what the cron calls, so a broadcast released this way is
+ * released the same way it would have been.
+ */
+export async function runTickNow(): Promise<ActionResult<{ message: string }>> {
+  await adminActor();
+  const result = await runBroadcastTick();
+
+  revalidatePath(PANEL);
+
+  if (result.error) return fail(`The tick failed: ${result.error}`);
+
+  const parts = [
+    result.released > 0 ? `released ${result.released}` : null,
+    result.missed > 0 ? `${result.missed} past their window` : null,
+    result.attempted > 0 ? `sent ${result.sent} of ${result.attempted}` : null,
+  ].filter(Boolean);
+
+  return succeed({
+    message:
+      parts.length === 0
+        ? "Ran. Nothing was due and nothing was queued."
+        : `Ran: ${parts.join(", ")}.`,
   });
 }
 
@@ -306,14 +425,21 @@ export async function setBroadcastStatusAction(
  */
 export async function drainNow(): Promise<ActionResult<{ message: string }>> {
   await adminActor();
+
+  // §S3. Release first. Pressing "send next batch" while a broadcast is a
+  // minute overdue should start it, not report an empty queue — and this is
+  // one of the paths that keeps the schedule moving if the cron has stopped.
+  const { released } = await releaseDueBroadcasts();
   const { attempted, sent, failed } = await drainBroadcasts();
 
   revalidatePath(PANEL);
   return succeed({
     message:
       attempted === 0
-        ? "Nothing queued."
-        : `Attempted ${attempted}: ${sent} sent${failed > 0 ? `, ${failed} not` : ""}.`,
+        ? released.length > 0
+          ? `Released ${released.length}, nothing sent yet.`
+          : "Nothing queued."
+        : `${released.length > 0 ? `Released ${released.length}. ` : ""}Attempted ${attempted}: ${sent} sent${failed > 0 ? `, ${failed} not` : ""}.`,
   });
 }
 
@@ -456,6 +582,23 @@ function mediaKindFor(
   if (mimeType.startsWith("video/")) return "video";
   if (mimeType === "application/pdf") return "document";
   return null;
+}
+
+/**
+ * The composer's optional schedule, as the native pickers post it.
+ *
+ * Three outcomes, kept distinct: null for "send now", a Date, or "invalid" for
+ * something that was typed but cannot be read. Collapsing the last into null
+ * would silently turn a mistyped date into an immediate send, which is the one
+ * failure mode this whole feature exists to avoid.
+ */
+function scheduleFrom(formData: FormData): Date | null | "invalid" {
+  if (String(formData.get("when") ?? "now") !== "later") return null;
+
+  const date = str(formData.get("scheduleDate"));
+  if (!date) return "invalid";
+
+  return zonedDateTime(date, str(formData.get("scheduleTime")) ?? "10:00") ?? "invalid";
 }
 
 /** Only the filters the composer offers, and only when actually set. */

@@ -144,17 +144,94 @@ send to hundreds of people in any case.
 on the wrong host. This is the single most likely thing to be wrong on a fresh
 staging deploy.
 
+## Scheduling
+
+A broadcast can be armed for a date and time instead of sent immediately. The
+composer has a **Schedule it** tab (native date and time inputs); the review page
+then offers **Schedule** alongside **Send now**, behind the same typed-count
+confirmation — arming for Sunday and sending now carry exactly the same risk of
+being the wrong 400 people, so they get the same gate.
+
+Times are **Kochi wall clock**, converted by `lib/time.ts` — the same conversion
+follow-ups use. `new Date("2026-10-05T10:00")` is the *server's* 10am, which on a
+UTC host is 3:30pm here: a breakfast offer after dinner, and invisible to anyone
+testing on an Indian laptop.
+
+An armed broadcast can be rescheduled, disarmed back to a draft (list intact),
+sent immediately, or cancelled. `whatsapp_broadcasts.status = 'scheduled'` is the
+only status the release query picks up, so an abandoned draft with a date left in
+the field can never go out on its own.
+
+### "The cron shouldn't fail"
+
+It can, so this is built on the assumption that it will. Five things:
+
+**1. The tick is catch-up, not incremental.** `releaseDueBroadcasts()` asks
+*which broadcasts are due*, never *which became due since the last tick*. One
+successful run after an outage of any length releases everything waiting. A
+missed tick costs a delay, never a broadcast.
+
+**2. Concurrent triggers cannot double-send.** Releasing is a conditional
+`UPDATE … WHERE status = 'scheduled'`, and the condition *is* the lock: of two
+callers arriving together, exactly one sees the row as `scheduled` and gets it
+back from `RETURNING`. Claiming recipients is `FOR UPDATE SKIP LOCKED`. No
+advisory locks, no leader election.
+
+**3. The cron is the primary trigger, not the only one.** Four things tick:
+
+| Trigger | When |
+| --- | --- |
+| `/api/cron/whatsapp` | the VPS crontab — the intended driver |
+| The inbound webhook | every WhatsApp message that arrives |
+| Loading `/admin/messaging` | one cheap conditional UPDATE per page view |
+| **Send next batch** / **Run the scheduler now** | by hand |
+
+So a business with any WhatsApp traffic at all keeps its own scheduler alive
+without knowing it, and an admin who notices something overdue fixes it by
+looking at the page.
+
+**4. A dead scheduler is visible.** Every tick upserts `job_runs`, and the
+panel's **Queue and scheduler** card says how long ago the last run was. Past
+`WHATSAPP_HEARTBEAT_STALE_MINUTES` (30) it turns into a red box naming the
+problem. A scheduled broadcast silently never going out is the worst failure
+this panel can have, and the difference between finding out there and finding
+out from a customer is that box. **Run the scheduler now** is identical to what
+the cron calls, so it also proves whether sending works at all.
+
+**5. Too late is not sent.** Past `WHATSAPP_SCHEDULE_GRACE_MINUTES` (180) a due
+broadcast is moved to `paused` instead of released, and the report page says it
+missed its window. Firing a "this weekend only" offer on Monday morning is worse
+than not firing it. Within the window it still goes — an ordinary reboot does
+not cost a broadcast.
+
+### The cron entry
+
+```crontab
+*/5 * * * * curl -fsS -m 120 -H "X-Cron-Key: $CRON_SECRET" \
+  https://livingbyitr.com/api/cron/whatsapp >/dev/null
+```
+
+Five minutes is a suggestion; nothing depends on it. A longer interval only makes
+broadcasts start later. The route accepts `GET` and `POST`, and the key as either
+`X-Cron-Key` or `Authorization: Bearer`, compared in constant time. Without
+`CRON_SECRET` set (32+ chars) it refuses everything — fail closed.
+
+It answers **200 even when the work inside failed**, with the detail in the body.
+A non-2xx from a cron job is mailed by some daemons, dropped by others and
+retried by none, so failures go to `job_runs` where the panel reads them. A bad
+key is the one exception and answers 401.
+
 ## Draining the queue
 
-Three triggers, no cron:
+Four triggers — see the table above. Each pass sends a bounded batch:
 
-- **Every inbound webhook** drains 5. An inbound message proves the gateway is
-  reachable, which makes it the cheapest moment to send more — the same
-  reasoning as `retryFailedOutbound`.
+- **Every inbound webhook** releases due broadcasts and drains 5. An inbound
+  message proves the gateway is reachable, which makes it the cheapest moment to
+  send more — the same reasoning as `retryFailedOutbound`.
+- **The cron tick** releases, drains a full batch, and retries failed outbound.
 - **Pressing send** drains one full batch in `after()`, so a small broadcast is
   simply finished by the time the page comes back.
-- **"Send next batch"** on the messaging page, for a quiet afternoon when no
-  inbound message has arrived to trigger anything.
+- **"Send next batch"** on the messaging page, for a quiet afternoon.
 
 Claiming is `update … where id in (select … for update skip locked)`. The admin
 page and a webhook can drain at the same moment; without that, both would read
@@ -218,8 +295,9 @@ those produce a handoff.
 
 ```bash
 npm ci
-npm run db:migrate          # 0006 — broadcasts, recipients, marketing_opt_out_at
+npm run db:migrate          # 0006 broadcasts/recipients/opt-out, 0007 scheduling
 npm run check:broadcast     # no database needed
+npm run check:schedule      # ditto
 npm run build
 ```
 
@@ -230,6 +308,11 @@ APP_BASE_URL=https://<this environment's host>   # the gateway fetches media fro
 WHATSAPP_MAX_AUDIENCE=2000
 WHATSAPP_BROADCAST_BATCH=15
 
+# Scheduling. Without CRON_SECRET the cron route refuses everything.
+CRON_SECRET=<openssl rand -hex 32>
+WHATSAPP_SCHEDULE_GRACE_MINUTES=180
+WHATSAPP_HEARTBEAT_STALE_MINUTES=30
+
 # only when the business has decided to turn it on
 WHATSAPP_AI_REPLIES=false
 WHATSAPP_AI_REPLY_BUDGET=6
@@ -239,11 +322,22 @@ OLLAMA_REPLY_TEMPERATURE=0.3
 MinIO must be configured for attachments. Without it a broadcast can still carry
 text, and the composer says so.
 
+Then add the cron entry above, and confirm it on the panel: the **Queue and
+scheduler** card should say "Scheduler running, last run just now" within five
+minutes. If it still says it has never run, the cron is not reaching the route —
+press **Run the scheduler now** to prove sending itself works, then fix the
+crontab.
+
 ### Rolling back
 
-The migration only adds two tables and one nullable column, so the previous
-build runs unchanged against the new schema. Reverting the code is enough; drop
-the tables afterwards if you want them gone.
+Both migrations only add tables and nullable columns, so the previous build runs
+unchanged against the new schema. Reverting the code is enough; drop the tables
+afterwards if you want them gone.
+
+One caveat specific to scheduling: a broadcast left at `status = 'scheduled'`
+will not be understood by a build from before 0007, so disarm anything armed
+before rolling back — the report page's **Clear the schedule** does it without
+losing the recipient list.
 
 ## Verified automatically
 
@@ -261,6 +355,18 @@ the tables afterwards if you want them gone.
 - "Customers" means `closed_won`, not an invented table
 - broadcast media gets an absolute URL with no doubled slash
 - every status the engine writes is one the column allows
+
+`npm run check:schedule` — the scheduling rules, also without a database:
+
+- 10am in the composer is 10am in Kochi, not on the server
+- a time typed back out of the panel is the time that was entered
+- a date before 5:30am does not slip to the previous UTC day
+- an unreadable date is rejected rather than treated as "now"
+- a blank time means 10am, not midnight
+- the grace window boundary, in both directions
+- a broadcast paused by hand is not reported as a missed schedule
+- no other status is ever reported as missed
+- the staleness alarm is slacker than any sane cron interval
 
 ## Still to verify against the live instance
 
@@ -282,6 +388,24 @@ The queue itself needs a real Postgres and a real gateway. Manual pass:
 7. With `WHATSAPP_AI_REPLIES=true`, ask a published listing's price from an
    unknown number, then ask something internal ("what will the owner accept?")
    and confirm the second produces a handoff rather than an answer.
+
+Scheduling, which is the part with a real cron in it:
+
+8. Arm a broadcast for three minutes from now, to one number you control. Leave
+   the panel. Confirm it arrives without anyone touching anything, and that the
+   report shows the scheduled time alongside the sent time.
+9. Stop the cron. Arm another for two minutes from now, wait five, and confirm
+   the panel's scheduler card turns red and the broadcast shows as **overdue**.
+   Then load `/admin/messaging` and confirm that alone releases it — that is the
+   backup trigger doing its job.
+10. Set `WHATSAPP_SCHEDULE_GRACE_MINUTES=1`, arm one for two minutes from now,
+    wait five, tick, and confirm it is **paused** and reported as having missed
+    its window rather than sent. Put the setting back.
+11. Hit `/api/cron/whatsapp` with no key and with a wrong key — both 401. With
+    the right key, confirm the JSON body reports what it did.
+12. Run two ticks at the same moment against one armed broadcast
+    (`curl … & curl … &`) and confirm from the recipient rows that nobody was
+    messaged twice.
 
 ## Ban risk
 

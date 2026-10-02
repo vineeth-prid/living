@@ -5,9 +5,12 @@ import { requireAdmin } from "@/lib/auth/dal";
 import { mediaUrl } from "@/lib/images";
 import { maskPhone } from "@/lib/integrations/whatsapp/phone";
 import {
+  SCHEDULE_GRACE_MINUTES,
   broadcastRecipients,
   getBroadcast,
+  missedItsWindow,
 } from "@/lib/crm/whatsapp/broadcast";
+import { IST, formatDateTime, istDate } from "@/lib/time";
 import {
   Badge,
   Card,
@@ -50,6 +53,33 @@ export default async function BroadcastPage({
   };
   // What a send would attempt: everything not already excluded on the way in.
   const sendable = counts.queued + counts.sending + counts.sent + counts.failed;
+
+  /**
+   * The scheduled instant, split into the two strings the native pickers want.
+   *
+   * Formatted in Kochi time, not UTC and not the server's zone — the operator
+   * typed "10:00" meaning ten in the morning here, and the field has to show
+   * them that back. `toISOString().slice(0,10)` would show the UTC date, which
+   * for anything before 5:30am is yesterday.
+   */
+  const scheduledParts = broadcast.scheduledFor
+    ? {
+        date: new Intl.DateTimeFormat("en-CA", {
+          timeZone: IST,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(broadcast.scheduledFor),
+        time: new Intl.DateTimeFormat("en-GB", {
+          timeZone: IST,
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).format(broadcast.scheduledFor),
+      }
+    : null;
+
+  const missedWindow = missedItsWindow(broadcast);
 
   return (
     <>
@@ -109,7 +139,15 @@ export default async function BroadcastPage({
         </Card>
 
         <div className="flex flex-col gap-6">
-          <Card title={broadcast.status === "draft" ? "Send" : "Progress"}>
+          <Card
+            title={
+              broadcast.status === "draft"
+                ? "Send"
+                : broadcast.status === "scheduled"
+                  ? "Scheduled"
+                  : "Progress"
+            }
+          >
             <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Stat label="Sent" value={counts.sent} tone="green" />
               <Stat label="Queued" value={counts.queued + counts.sending} />
@@ -122,10 +160,32 @@ export default async function BroadcastPage({
               sendable={sendable}
               failed={counts.failed}
               stuck={counts.sending}
+              scheduledFor={scheduledParts}
+              scheduledLabel={
+                broadcast.scheduledFor
+                  ? formatDateTime(broadcast.scheduledFor)
+                  : null
+              }
+              missedWindow={missedWindow}
+              today={istDate()}
             />
             {broadcast.completedAt && (
               <p className="mt-3 text-xs text-stone-500">
                 Finished {dateTime(broadcast.completedAt)}.
+              </p>
+            )}
+            {broadcast.scheduledFor && broadcast.status === "completed" && (
+              <p className="mt-1 text-xs text-stone-500">
+                Was scheduled for {formatDateTime(broadcast.scheduledFor)}.
+              </p>
+            )}
+            {broadcast.status === "scheduled" && (
+              <p className="mt-3 text-xs text-stone-500">
+                If the server is down at that moment it still goes out when it
+                comes back, up to {SCHEDULE_GRACE_MINUTES} minutes late. Past
+                that it is parked here rather than sent, because an offer
+                arriving long after its time is worse than one that did not
+                arrive.
               </p>
             )}
           </Card>
@@ -234,6 +294,7 @@ function Stat({
 }
 
 function statusTone(status: string) {
+  if (status === "scheduled") return "blue" as const;
   if (status === "completed") return "green" as const;
   if (status === "sending") return "blue" as const;
   if (status === "cancelled") return "red" as const;

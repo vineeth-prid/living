@@ -24,6 +24,7 @@
     "check:commands": "tsx scripts/check-commands.ts",
     "check:broadcast": "tsx scripts/check-broadcast.ts",
     "check:export": "tsx scripts/check-property-export.ts",
+    "check:schedule": "tsx scripts/check-schedule.ts",
     "check:intent": "tsx scripts/check-intent.ts"
   },
   "dependencies": {

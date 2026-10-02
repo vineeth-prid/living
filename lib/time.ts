@@ -75,6 +75,24 @@ export const istDate = (now = new Date(), timeZone = IST): string =>
     day: "2-digit",
   }).format(now);
 
+/**
+ * A date relative to today in Indian time, as "YYYY-MM-DD".
+ *
+ * `istDatePlusDays(1)` is tomorrow in Kochi — which is what a scheduling form
+ * wants as its default, and is not the same as tomorrow in UTC for five and a
+ * half hours of every day.
+ *
+ * Here rather than inline in the page for two reasons: this is the module that
+ * owns "what day is it in Kochi", and reading a clock inside a component body
+ * is an impurity React rightly complains about. Calling a function in a plain
+ * module is not.
+ */
+export const istDatePlusDays = (
+  days: number,
+  now = new Date(),
+  timeZone = IST,
+): string => istDate(new Date(now.getTime() + days * 86_400_000), timeZone);
+
 /** Start and end of a day in Indian time, as instants. */
 export function dayBounds(date: string, timeZone = IST) {
   const from = zonedDateTime(date, "00:00", timeZone);

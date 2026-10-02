@@ -53,6 +53,8 @@ export function Composer({
   cities,
   configured,
   storageReady,
+  today,
+  tomorrow,
 }: {
   presets: PresetOption[];
   employees: Option[];
@@ -60,6 +62,16 @@ export function Composer({
   cities: string[];
   configured: boolean;
   storageReady: boolean;
+  /**
+   * Today and tomorrow in Kochi, as "YYYY-MM-DD", rendered on the server.
+   *
+   * Passed in rather than read from the browser clock. The time is interpreted
+   * in Kochi whatever zone the operator is in, so a laptop in Dubai offering
+   * its own "today" as the earliest date would be offering the wrong one — and
+   * reading a clock during render is not something a component may do anyway.
+   */
+  today: string;
+  tomorrow: string;
 }) {
   const router = useRouter();
   const [state, formAction] = useActionState(createBroadcastAction, null);
@@ -314,7 +326,10 @@ export function Composer({
           )}
         </div>
 
-        {/* 3 — the count, and only then the button */}
+        {/* 3 — when */}
+        <SchedulePicker today={today} tomorrow={tomorrow} />
+
+        {/* 4 — the count, and only then the button */}
         <div className="flex flex-wrap items-center gap-3 border-t border-stone-200 pt-4">
           <Button
             type="button"
@@ -365,6 +380,79 @@ export function Composer({
         )}
       </form>
     </Card>
+  );
+}
+
+/**
+ * §S1. Now, or a date and time.
+ *
+ * Native date and time inputs — the platform already has a picker, it already
+ * knows the locale, and it already works on a phone, which is where half of
+ * this will be used. A library here would be a dependency to carry forever in
+ * exchange for a different-looking calendar.
+ *
+ * The time is read as Kochi wall clock on the server. Nothing here converts
+ * anything: a date that round-trips through a browser's timezone is a date that
+ * goes out an hour early somewhere.
+ */
+function SchedulePicker({
+  today,
+  tomorrow,
+}: {
+  today: string;
+  tomorrow: string;
+}) {
+  const [later, setLater] = useState(false);
+
+  return (
+    <div className="rounded-[12px] border border-stone-200 bg-stone-50/60 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        <ModeTab active={!later} onClick={() => setLater(false)}>
+          Send when I confirm
+        </ModeTab>
+        <ModeTab active={later} onClick={() => setLater(true)}>
+          Schedule it
+        </ModeTab>
+      </div>
+
+      {/* The radio the server reads. Hidden, because the tabs above are the
+          control — but it is a real form value, not component state. */}
+      <input type="hidden" name="when" value={later ? "later" : "now"} />
+
+      {later ? (
+        <>
+          <div className="flex flex-wrap items-end gap-3">
+            <Field label="Date" required className="w-44">
+              <input
+                type="date"
+                name="scheduleDate"
+                required
+                min={today}
+                defaultValue={tomorrow}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Time" className="w-32" hint="Kochi time">
+              <input
+                type="time"
+                name="scheduleTime"
+                defaultValue="10:00"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+          <p className="mt-2 text-xs text-stone-500">
+            You will still see the recipient list and confirm before it is armed.
+            Nothing goes out until the time you set.
+          </p>
+        </>
+      ) : (
+        <p className="text-xs text-stone-500">
+          It goes out as soon as you confirm the recipient list on the next
+          screen — about twenty messages a minute.
+        </p>
+      )}
+    </div>
   );
 }
 
