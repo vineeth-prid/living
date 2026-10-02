@@ -93,6 +93,63 @@ metadata, canonical URL, OG image and `RealEstateListing` structured data, and
 are added to `sitemap.xml`. Publishing revalidates those paths, so a new
 listing appears without a redeploy.
 
+## Exporting properties
+
+**Admin → Properties** has two export buttons, both on the toolbar above the
+table:
+
+- **Export all N** — everything the current filters match, across every page.
+  It is a plain link carrying the same query string the list page is already
+  using, minus `page` and `sort`, so "export what I can see" needs no separate
+  filter UI.
+- **Export selected** — tick rows, press the button. The checkboxes are plain
+  inputs named `ids` inside a GET form pointed at `/admin/properties/export`,
+  so the browser does the download itself: no fetch, no Blob, no object URL.
+  With scripting broken the form still submits. Selection is per page, which the
+  count says when it matters.
+
+Both land on `app/admin/(panel)/properties/export/route.ts`. A route handler
+rather than a Server Action because a file download is what a GET and a
+`Content-Disposition` header already do.
+
+### What is in the file
+
+The importable columns come from `IMPORT_COLUMNS`, in that order, **so an export
+can be edited in Excel and fed straight back through Import CSV.** The
+read-only ones follow — `reference`, `id`, `workflowStatus`, `isPublic`,
+`publishedAt`, `priceValue`, `finalPrice`, `instagramUrl`, the SEO fields,
+`details`, `galleryPaths`, `photoCount`, `createdBy`, `updatedBy`, `createdAt`,
+`updatedAt`. The importer reports those as unknown headers rather than failing,
+which is what keeps the round trip working.
+
+Values are shaped the way the importer reads them back: amenities pipe-separated,
+booleans as `yes`/`no`, dates as `YYYY-MM-DD`, `details` as `Label: value |
+Label: value`. Nothing ever renders as `null` or `undefined` — a cell reading
+"null" survives a re-import as literal text.
+
+**Empty columns are dropped.** A column is left out of the file entirely when it
+is empty for every row in *that* export. One listing out of four hundred filling
+`surveyNumber` keeps the column; none filling it loses it. A listing has seventy
+fields and a typical one uses twenty, so without this the file is mostly
+sideways scrolling.
+
+Soft-deleted listings are never exported — `deletedAt is null`, the same as the
+list page. `PROPERTY_EXPORT_MAX` (5,000) caps one file.
+
+### Permissions and the audit
+
+Same gate as the properties list: any signed-in staff member. Everything in the
+file is something they can already open one listing at a time — **except**
+`finalPrice`, which is omitted from the header row altogether without
+`property.final_price`. Omitted rather than blanked: a present-but-empty column
+reads as "no final price was agreed", which is a different and wrong statement.
+
+Every export writes a `property.exported` audit row with the actor, the row
+count, the columns it contained and the filters or selection size. Bulk
+extraction of seller contact details is exactly the thing that needs to be
+answerable afterwards, and because empty columns are dropped the shape varies
+between exports — so the headers are recorded, not assumed.
+
 ## Lead capture
 
 The contact form and every property page's enquiry form create CRM leads
@@ -126,6 +183,9 @@ moment the migration ran. It only touches rows present at migration time.
 npm run check:security   # 20 assertions: public/internal split, password
                          # hashing, publish gate, duplicate matching, funnel
                          # math, paise/rupee conversion, SMTP configuration
+npm run check:export     # 11 assertions: empty columns dropped, finalPrice
+                         # behind its permission, an exported file still
+                         # readable by the importer, quoting, no "null" cells
 npm run check:jsonld     # existing structured-data check
 npx tsc --noEmit
 npm run lint
