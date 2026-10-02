@@ -1,4 +1,5 @@
 import { openWAConfig, type OpenWAConfig } from "../config";
+import type { MediaSendKind } from "../types";
 
 // The only file in the codebase that knows OpenWA's HTTP shape. Everything
 // above it speaks Living's types (§3).
@@ -172,6 +173,23 @@ export type OpenWASendResult = {
   timestamp?: number;
 };
 
+/**
+ * OpenWA's media routes, one per kind.
+ *
+ * The single source of truth for these names. If the gateway is upgraded and a
+ * path changes, this is the line to edit — and `sendMedia` below puts the path
+ * it tried into the error, so a mismatch shows up in the broadcast report
+ * rather than needing anyone to read this file.
+ *
+ * `audio` is deliberately absent: it needs a mimetype and a ptt flag that
+ * nothing upstream produces, and the composer cannot create one.
+ */
+const MEDIA_ENDPOINTS: Partial<Record<MediaSendKind, string>> = {
+  image: "/messages/send-image",
+  video: "/messages/send-video",
+  document: "/messages/send-document",
+};
+
 export const openWA = {
   config: openWAConfig,
 
@@ -202,9 +220,24 @@ export const openWA = {
     );
   },
 
+  /**
+   * Media goes to a type-specific endpoint, decided here.
+   *
+   * There is no generic `send-media` route on OpenWA — this used to post to one
+   * anyway, and every media message came back
+   * `Cannot POST /api/sessions/…/messages/send-media` before the gateway even
+   * looked at it. The route existed only in this file's imagination, and nothing
+   * exercised it until broadcasts shipped.
+   *
+   * The names are in one map so correcting one is a one-line change, and the
+   * error below names the path it tried — a wrong guess should be diagnosable
+   * from the stored error alone rather than needing someone to read this file.
+   */
   sendMedia(
     payload: {
       chatId: string;
+      kind?: MediaSendKind;
+      mimeType?: string;
       url?: string;
       base64?: string;
       filename?: string;
@@ -212,11 +245,66 @@ export const openWA = {
     },
     config = openWAConfig(),
   ) {
+    // Matching the `?? "image"` the broadcast engine already applies: a missing
+    // kind is overwhelmingly a photo, and a photo sent as a photo is a better
+    // failure than a 400 for an absent field.
+    const kind = payload.kind ?? "image";
+    if (!payload.kind) {
+      console.warn(
+        `[openwa] media send with no kind, assuming image (chat ${payload.chatId})`,
+      );
+    }
+
+    const path = MEDIA_ENDPOINTS[kind];
+    if (!path) {
+      // Not reachable from the composer, which accepts only images, video and
+      // PDF. Refused rather than guessed: an audio send needs a mimetype and a
+      // ptt flag, and inventing either would produce a message that arrives
+      // looking broken instead of one that plainly did not send.
+      throw new OpenWAError(
+        `Sending ${kind} is not supported yet — add its endpoint and required fields to MEDIA_ENDPOINTS first.`,
+        null,
+        false,
+      );
+    }
+
+    if (!payload.url && !payload.base64) {
+      // The service checks this too, but the guard belongs here as well: this is
+      // the layer that knows OpenWA needs one or the other, and a request with
+      // neither comes back as a bare 400 that says nothing useful.
+      throw new OpenWAError(
+        "No media to send — a URL or an inline payload is required.",
+        null,
+        false,
+      );
+    }
+
+    if (kind === "document" && !payload.mimeType) {
+      // WhatsApp renders a document with no content type as an unopenable blob.
+      // Better to fail here, where the report says why.
+      throw new OpenWAError(
+        "A document needs its content type, and none reached the provider.",
+        null,
+        false,
+      );
+    }
+
+    // Only the fields that have a value. A strict validator on the gateway
+    // rejects an explicit null where it accepts an absent key.
+    const body: Record<string, unknown> = { chatId: payload.chatId };
+    if (payload.url) body.url = payload.url;
+    if (payload.base64) body.base64 = payload.base64;
+    if (payload.caption) body.caption = payload.caption;
+    if (kind === "document") {
+      body.filename = payload.filename ?? "document";
+      body.mimetype = payload.mimeType;
+    }
+
     return request<OpenWASendResult>(
       config,
       "POST",
-      `/api/sessions/${encodeURIComponent(config.sessionId)}/messages/send-media`,
-      payload,
+      `/api/sessions/${encodeURIComponent(config.sessionId)}${path}`,
+      body,
       { retry: false },
     );
   },

@@ -422,6 +422,10 @@ export async function drainBroadcasts(
       mediaKey: whatsappBroadcasts.mediaKey,
       mediaFilename: whatsappBroadcasts.mediaFilename,
       mediaKind: whatsappBroadcasts.mediaKind,
+      // Needed for a document send: WhatsApp renders one with no content type
+      // as an unopenable blob. It was stored on the row from the start and
+      // simply not read here, which is the whole of why documents could not go.
+      mediaMimeType: whatsappBroadcasts.mediaMimeType,
     })
     .from(whatsappBroadcasts)
     .where(eq(whatsappBroadcasts.status, "sending"))
@@ -459,6 +463,7 @@ export async function drainBroadcasts(
             url: broadcastMediaUrl(broadcast.mediaKey),
             filename: broadcast.mediaFilename ?? undefined,
             kind: broadcast.mediaKind ?? "image",
+            mimeType: broadcast.mediaMimeType ?? undefined,
             messageId,
           })
         : await sendText({ to: recipient.phoneNumber, text: broadcast.body });

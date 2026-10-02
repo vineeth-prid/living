@@ -144,6 +144,54 @@ send to hundreds of people in any case.
 on the wrong host. This is the single most likely thing to be wrong on a fresh
 staging deploy.
 
+### The endpoint per kind
+
+**OpenWA has no generic `send-media` route.** Media goes to a type-specific one,
+and `MEDIA_ENDPOINTS` in `lib/integrations/whatsapp/openwa/client.ts` is the only
+place those names live:
+
+| Kind | Route | Extra body fields |
+| --- | --- | --- |
+| `image` | `/messages/send-image` | — |
+| `video` | `/messages/send-video` | — |
+| `document` | `/messages/send-document` | `filename`, `mimetype` |
+| `audio` | not implemented | would need `mimetype` + `ptt` |
+
+The kind comes from `whatsapp_broadcasts.media_kind`, is carried on
+`SendMediaInput.kind`, and the MIME type for documents comes from
+`media_mime_type` on the same row. A missing kind defaults to `image` with a
+warning — matching the `?? "image"` the broadcast engine already applies, since
+an unlabelled attachment is overwhelmingly a photo.
+
+Audio is refused rather than guessed: nothing upstream produces the `ptt` flag,
+and the composer cannot create an audio file. A document with no content type is
+refused too — WhatsApp renders one as an unopenable blob, which is worse than a
+send that plainly failed and says why.
+
+If the gateway is upgraded and a path changes, edit that map. The error carries
+the path it tried, so a mismatch shows up in the broadcast report rather than
+needing anyone to read the file.
+
+> **This was a bug, fixed after the first live test.** The client posted
+> everything to `/messages/send-media`, so every media broadcast came back
+> `Cannot POST /api/sessions/…/messages/send-media` before the gateway looked at
+> it. `kind` was known by the caller, needed by the provider, and declared by
+> neither — so TypeScript never saw it being dropped. `check:broadcast` now
+> asserts the URL each kind posts to, against a stubbed fetch.
+
+### When a media send fails
+
+The recipient row goes to `failed` with the gateway's message, and the report
+shows it. There is deliberately **no text-only fallback**: sending the caption
+without the photo delivers a different message than the one that was approved,
+to people who would have no idea anything was missing. A broadcast that visibly
+failed and can be retried is better than one that quietly half-worked.
+
+Note the corollary — a broadcast created with **no attachment at all** takes the
+`sendText` path and goes out as plain text. That is correct behaviour, and it is
+also the likeliest explanation for a plain-text broadcast arriving when a media
+one was intended: check `media_key` on the row before suspecting the media path.
+
 ## Scheduling
 
 A broadcast can be armed for a date and time instead of sent immediately. The
@@ -355,6 +403,11 @@ losing the recipient list.
 - "Customers" means `closed_won`, not an invented table
 - broadcast media gets an absolute URL with no doubled slash
 - every status the engine writes is one the column allows
+- an image posts to `send-image`, a video to `send-video`, a document to
+  `send-document` with its filename and mimetype — asserted against a stubbed
+  fetch, so the URL is checked rather than assumed
+- a document with no content type, an audio send, and a send with no media at
+  all are each refused before a request is made
 
 `npm run check:schedule` — the scheduling rules, also without a database:
 
@@ -375,7 +428,11 @@ The queue itself needs a real Postgres and a real gateway. Manual pass:
 1. Create a broadcast with one image to a hand-picked audience of two numbers
    you control. Check the report page lists both before sending.
 2. Send. Confirm **both** receive one message, with the image and the caption
-   together — not a photo followed by a separate text.
+   together — not a photo followed by a separate text. Then repeat with an MP4
+   and with a PDF: those take different OpenWA endpoints, and the route names in
+   `MEDIA_ENDPOINTS` have been verified for images but not yet for the other two
+   against this gateway build. A wrong one shows up as
+   `Cannot POST …/messages/send-video` in the report.
 3. Reply **STOP** from one of them. Confirm the confirmation arrives, the number
    appears under **Opted out**, and a second broadcast to the same audience
    shows it as `Opted out` rather than queueing it.

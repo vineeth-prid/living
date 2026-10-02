@@ -11,7 +11,7 @@ import { newId } from "@/lib/ids";
 import { OUTBOUND_RATE, isWhatsAppEnabled, openWAConfig } from "./config";
 import { OpenWAProvider } from "./openwa/provider";
 import { normalisePhone } from "./phone";
-import type { SendResult, WhatsAppProvider } from "./types";
+import type { MediaSendKind, SendResult, WhatsAppProvider } from "./types";
 
 // The seam (§2). CRM code calls this module and never a provider directly, so
 // swapping OpenWA for Meta's Cloud API touches one function here and nothing
@@ -209,7 +209,13 @@ async function deliver(input: {
   messageType: string;
   /** Body for a text message, caption for media. Stored either way. */
   text: string;
-  media?: { url?: string; base64?: string; filename?: string };
+  media?: {
+    url?: string;
+    base64?: string;
+    filename?: string;
+    /** Documents will not render without it. */
+    mimeType?: string;
+  };
   /** Stored on the message row so the broadcast report can join back to it. */
   messageId?: string;
 }): Promise<SendResult> {
@@ -260,6 +266,12 @@ async function deliver(input: {
         url: input.media.url,
         base64: input.media.base64,
         filename: input.media.filename,
+        // The two fields that used to stop here. messageType was stored on the
+        // row and then thrown away, so the provider had no idea whether it was
+        // sending a photo or a PDF — and OpenWA has no endpoint that accepts
+        // "some media", only send-image, send-video and send-document.
+        kind: mediaKind(input.messageType),
+        mimeType: input.media.mimeType,
       })
     : await whatsappProvider().sendText({
         to: phone.phoneNumber,
@@ -295,6 +307,19 @@ async function deliver(input: {
   return result;
 }
 
+/**
+ * `message_type` on the stored row is a free-text column that has held whatever
+ * the provider called an inbound message. Narrowing it to the four kinds a send
+ * can actually be happens here, once, rather than at the provider — which would
+ * otherwise have to know which strings the CRM happens to use.
+ */
+function mediaKind(messageType: string): MediaSendKind {
+  if (messageType === "video") return "video";
+  if (messageType === "document") return "document";
+  if (messageType === "audio") return "audio";
+  return "image";
+}
+
 export function sendText(input: {
   to: string;
   text: string;
@@ -317,8 +342,10 @@ export function sendMedia(input: {
   url?: string;
   base64?: string;
   filename?: string;
-  /** image | video | document — only for the stored row's message_type. */
+  /** image | video | document. Decides both the stored type and the endpoint. */
   kind?: string;
+  /** The file's content type. Required for documents. */
+  mimeType?: string;
   conversationId?: string;
   messageId?: string;
 }): Promise<SendResult> {
@@ -335,7 +362,12 @@ export function sendMedia(input: {
     conversationId: input.conversationId,
     messageId: input.messageId,
     messageType: input.kind ?? "image",
-    media: { url: input.url, base64: input.base64, filename: input.filename },
+    media: {
+      url: input.url,
+      base64: input.base64,
+      filename: input.filename,
+      mimeType: input.mimeType,
+    },
   });
 }
 
