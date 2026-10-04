@@ -180,6 +180,22 @@ function throttleCheck(): string | null {
   return null;
 }
 
+/**
+ * Is there room to send right now? Read-only, unlike `throttleCheck`.
+ *
+ * The broadcast loop asks this *before* claiming a recipient. Without it, a
+ * throttled minute returned a retryable failure for a recipient that had
+ * already had its attempt counter incremented — so hitting the rate limit, the
+ * thing that is supposed to be routine, burned a retry on someone nobody had
+ * tried to message yet. With a ceiling on attempts that is how a recipient ends
+ * up permanently failed for no reason at all.
+ */
+export function hasSendBudget(): boolean {
+  const now = Date.now();
+  const window = (globalForRate.__waWindow ?? []).filter((t) => now - t < 60_000);
+  return window.length < OUTBOUND_RATE.perMinute;
+}
+
 async function spaceOut() {
   const gap = Date.now() - (globalForRate.__waLastSend ?? 0);
   if (gap < OUTBOUND_RATE.minGapMs) {

@@ -93,7 +93,23 @@ Seven things, and none of them is a warning in a comment.
    truncated, so a mis-set filter fails loudly instead of quietly starting.
 
 Everything excluded is still written as a `skipped` recipient row with its
-reason, so the report adds up. "Sent 391 of 391" when 21 people were dropped on
+reason, so the report adds up.
+
+**Cancelling is terminal and cascades.** Cancelling a broadcast moves its
+`queued` and `sending` recipient rows to `skipped` in the same transaction, and
+`requeueFailed` refuses to touch a cancelled broadcast. Without both halves,
+"cancel, then retry the failures" put the broadcast back to `sending` and
+resumed the entire abandoned queue. Pausing deliberately does **not** cascade —
+a paused broadcast resumes with its queue intact, and that difference is the
+whole reason there are two buttons.
+
+**Retries are capped** at `WHATSAPP_BROADCAST_MAX_ATTEMPTS` (3) in the automatic
+loop, not only in the manual retry button. A recipient that exhausts its
+attempts is moved to `failed` with "gave up after 3 attempts" on the row, so the
+broadcast can complete instead of sitting at `sending` with work that will never
+succeed. The rate-limit check happens *before* a recipient is claimed, because
+claiming increments the attempt counter — discovering a busy minute afterwards
+spent a retry on someone nothing had tried to message. "Sent 391 of 391" when 21 people were dropped on
 the way in is a report that hides its own behaviour.
 
 ## Opting out
@@ -178,6 +194,40 @@ needing anyone to read the file.
 > it. `kind` was known by the caller, needed by the provider, and declared by
 > neither — so TypeScript never saw it being dropped. `check:broadcast` now
 > asserts the URL each kind posts to, against a stubbed fetch.
+
+### If an image is accepted but never arrives
+
+A send can come back `201` with a real message id, appear in the account's own
+chat history as `type: "image", fromMe: true`, and still never reach the
+recipient's phone. **A success response does not mean delivery.** OpenWA answers
+as soon as it has accepted the request and built a local message object; the
+actual upload to WhatsApp's media servers happens afterwards, inside the browser
+page it drives, and a failure there never becomes an HTTP error.
+
+With `WHATSAPP_MEDIA_TRANSPORT=url` (the default) there is one more step in that
+blind spot: the gateway has to fetch the file from `APP_BASE_URL` over HTTPS
+first. If its container is missing `ca-certificates` — which has happened twice,
+because the OpenWA Dockerfile does not install them and every
+`--force-recreate` wipes a live patch — that fetch fails silently and the symptom
+is exactly this: clean success, no message.
+
+So the first thing to try is:
+
+```dotenv
+WHATSAPP_MEDIA_TRANSPORT=base64
+```
+
+That sends the bytes with the request and removes the gateway's fetch from the
+picture entirely. If the image arrives with `base64` and not with `url`, the
+problem is the gateway reaching us, not the gateway uploading — and the fix is
+baking `ca-certificates` into its Dockerfile rather than anything in this
+repository. If it fails both ways, the problem is downstream of us: check the
+session reached a genuine `ready` state rather than the
+"WhatsApp Web ready event was missed; reconciling" fallback, and watch
+`docker logs openwa-api` live during a send rather than reading it afterwards.
+
+Files above `WHATSAPP_MAX_INLINE_BYTES` (8 MB) use the URL regardless, with a
+line in the log — base64 inflates by a third and travels once per recipient.
 
 ### When a media send fails
 
@@ -408,6 +458,34 @@ losing the recipient list.
   fetch, so the URL is checked rather than assumed
 - a document with no content type, an audio send, and a send with no media at
   all are each refused before a request is made
+- inline media goes as `base64` with no `url` alongside it
+- `broadcastRecipients` filters by the broadcast id it was given — asserted
+  against the function's own source, so the missing-`where` bug cannot return
+- the retry cap exists, is sane, and is the same constant the manual retry uses
+- cancelling cascades to recipient rows in a transaction; pausing does not
+- `requeueFailed` refuses a cancelled broadcast
+- the rate-limit check comes before the claim, not after
+
+## Not in this repository
+
+Some of what broke live is on the VPS, in the OpenWA deployment, and no change
+here can fix it:
+
+- **`whatsapp-web.js` media crash.** A WhatsApp Web build around 2026-09-17
+  broke outgoing media in the library OpenWA runs on
+  (`Data passed to getter must include an id property`). The fix is a one-line
+  backport patcher, already merged upstream in OpenWA's own repo as
+  `scripts/patch-wwebjs-media-id.js`. It is currently live-patched inside the
+  running container only, which means the next `--force-recreate` silently
+  undoes it. It needs committing and wiring into `scripts/postinstall.js` and
+  the Dockerfile the same way the two existing patchers are.
+- **`ca-certificates` and `openssl` missing from the Dockerfile's production
+  stage.** Breaks outbound HTTPS from the container on every rebuild, which is
+  what the `url` media transport depends on. Belongs in the same `apt-get
+  install` block as `curl` and `procps`.
+
+Both are deployment-side. The `base64` transport above is the mitigation
+available from this side while they are outstanding.
 
 `npm run check:schedule` — the scheduling rules, also without a database:
 
@@ -438,6 +516,11 @@ The queue itself needs a real Postgres and a real gateway. Manual pass:
    shows it as `Opted out` rather than queueing it.
 4. Pause a larger broadcast mid-flight, confirm queued rows keep their place,
    resume, and confirm nobody receives it twice.
+4b. **Cancel** a larger broadcast after one or two have gone out. Confirm no
+    further messages arrive, that the remaining rows read `skipped — Broadcast
+    cancelled`, and that pressing **Retry failed** afterwards does nothing.
+4c. Create a broadcast with exactly **one** recipient and confirm the review
+    page says one person, not a number inflated by other broadcasts.
 5. With the gateway stopped, send a broadcast: rows should go to `failed` with a
    retryable reason and **Retry failed** should drain them once it is back.
 6. Reply to a thread from the inbox and confirm it arrives and lands in the

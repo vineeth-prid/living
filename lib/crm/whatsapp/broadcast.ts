@@ -9,7 +9,12 @@ import {
 } from "@/lib/db/schema";
 import { newId } from "@/lib/ids";
 import { isWhatsAppEnabled } from "@/lib/integrations/whatsapp/config";
-import { sendMedia, sendText } from "@/lib/integrations/whatsapp/service";
+import {
+  hasSendBudget,
+  sendMedia,
+  sendText,
+} from "@/lib/integrations/whatsapp/service";
+import { getObject, hasStorage } from "@/lib/storage";
 import { broadcastMediaUrl } from "@/lib/site";
 import type { Candidate } from "./audience";
 
@@ -33,6 +38,52 @@ import type { Candidate } from "./audience";
 
 /** How many recipients one drain pass will attempt. */
 const BATCH = Number(process.env.WHATSAPP_BROADCAST_BATCH ?? 15);
+
+/**
+ * How many times one recipient is attempted before giving up.
+ *
+ * The automatic loop had no ceiling at all: a row that kept failing retryably
+ * went back on the queue every pass, forever. One reached 28 attempts before
+ * somebody stopped it by hand. `requeueFailed` already used `attempts < 3` for
+ * manual retries, so the convention existed — it just was not enforced where it
+ * mattered, which is the loop nobody is watching.
+ *
+ * Three is enough to tell a flaky gateway from a number that will never work.
+ */
+export const MAX_ATTEMPTS = Number(process.env.WHATSAPP_BROADCAST_MAX_ATTEMPTS ?? 3);
+
+/**
+ * How the attachment reaches the gateway: as a URL it fetches, or inline.
+ *
+ * `url` is the default and the cheaper one — the gateway fetches it once per
+ * recipient and nothing large goes through this process.
+ *
+ * `base64` exists because that fetch is a failure nobody can see. The gateway
+ * answers the send request before it uploads anything, so if it cannot reach
+ * our HTTPS URL — a missing ca-certificates in its container has already done
+ * this twice — the API returns a clean success, records the message locally, and
+ * the recipient's phone never shows it. There is no error to find, because the
+ * part that failed had already been acknowledged.
+ *
+ * Switching to `base64` removes that step entirely: the bytes travel with the
+ * request. It is the quickest way to tell a gateway-side upload problem from a
+ * gateway-cannot-reach-us problem, and a usable fallback if the container's
+ * trust store keeps getting wiped.
+ */
+const MEDIA_TRANSPORT =
+  process.env.WHATSAPP_MEDIA_TRANSPORT === "base64" ? "base64" : "url";
+
+/**
+ * Ceiling on inline media.
+ *
+ * base64 inflates by a third and the payload goes over the wire once per
+ * recipient, so a 48 MB video would be 64 MB of JSON two hundred times. Past
+ * this the URL is used regardless of the setting, with a line in the log — a
+ * degraded send beats a broadcast that takes the server down.
+ */
+const MAX_INLINE_BYTES = Number(
+  process.env.WHATSAPP_MAX_INLINE_BYTES ?? 8 * 1024 * 1024,
+);
 
 export type NewBroadcast = {
   name: string;
@@ -354,14 +405,44 @@ export async function setBroadcastStatus(
   if (!row) return "That broadcast no longer exists.";
   if (row.status === "completed") return "That broadcast has already finished.";
 
-  await db()
-    .update(whatsappBroadcasts)
-    .set({
-      status,
-      updatedAt: new Date(),
-      ...(status === "cancelled" ? { completedAt: new Date() } : {}),
-    })
-    .where(eq(whatsappBroadcasts.id, id));
+  await db().transaction(async (tx) => {
+    await tx
+      .update(whatsappBroadcasts)
+      .set({
+        status,
+        updatedAt: new Date(),
+        ...(status === "cancelled" ? { completedAt: new Date() } : {}),
+      })
+      .where(eq(whatsappBroadcasts.id, id));
+
+    /**
+     * Cancelling has to reach the recipient rows, in the same transaction.
+     *
+     * Setting only the broadcast's own status left its queued and sending rows
+     * exactly as they were — still claimable. The drain does filter on
+     * `status = 'sending'` so nothing picked them up directly, but
+     * `requeueFailed` put the broadcast *back* to sending, which brought the
+     * whole abandoned queue with it. "Cancel, then retry the failures" was
+     * enough to resume a broadcast somebody had deliberately stopped.
+     *
+     * Pausing deliberately does NOT cascade: a paused broadcast is meant to
+     * resume with its queue intact, which is the whole difference between the
+     * two buttons.
+     */
+    if (status === "cancelled") {
+      await tx
+        .update(whatsappBroadcastRecipients)
+        .set({ status: "skipped", reason: "Broadcast cancelled" })
+        .where(
+          and(
+            eq(whatsappBroadcastRecipients.broadcastId, id),
+            inArray(whatsappBroadcastRecipients.status, ["queued", "sending"]),
+          ),
+        );
+    }
+  });
+
+  if (status === "cancelled") await refreshCounts(id);
   return null;
 }
 
@@ -382,6 +463,20 @@ export async function requeueStuck(id: string): Promise<number> {
 
 /** Puts failed rows back on the queue, for a retry after the gateway is fixed. */
 export async function requeueFailed(id: string): Promise<number> {
+  /**
+   * A cancelled broadcast is not restartable, and this is where that used to
+   * leak: it set the broadcast back to `sending` unconditionally, so retrying
+   * the failures of something deliberately stopped resumed the entire
+   * abandoned queue. Cancelled is terminal — the way to send it after all is
+   * to make a new broadcast, which also gives the recipient list another look.
+   */
+  const [broadcast] = await db()
+    .select({ status: whatsappBroadcasts.status })
+    .from(whatsappBroadcasts)
+    .where(eq(whatsappBroadcasts.id, id))
+    .limit(1);
+  if (!broadcast || broadcast.status === "cancelled") return 0;
+
   const rows = await db()
     .update(whatsappBroadcastRecipients)
     .set({ status: "queued", reason: null })
@@ -390,7 +485,8 @@ export async function requeueFailed(id: string): Promise<number> {
         eq(whatsappBroadcastRecipients.broadcastId, id),
         eq(whatsappBroadcastRecipients.status, "failed"),
         // Three tries is enough to tell a flaky gateway from a dead number.
-        sql`${whatsappBroadcastRecipients.attempts} < 3`,
+        // The automatic loop enforces the same ceiling — see MAX_ATTEMPTS.
+        sql`${whatsappBroadcastRecipients.attempts} < ${MAX_ATTEMPTS}`,
       ),
     )
     .returning({ id: whatsappBroadcastRecipients.id });
@@ -442,11 +538,28 @@ export async function drainBroadcasts(
     const budget = limit - attempted;
     if (budget <= 0) break;
 
+    // Asked before claiming, not after. Claiming increments `attempts`, so
+    // discovering the rate limit afterwards spent a retry on a recipient
+    // nothing had tried to message — which, now that attempts are capped,
+    // is how someone ends up permanently failed because the gateway was busy.
+    if (!hasSendBudget()) break;
+
     const claimed = await claim(broadcast.id, budget);
     if (claimed.length === 0) {
+      // Nothing claimable may mean nothing left, or everything left having
+      // used up its attempts. Sweep those to failed so the broadcast can
+      // finish instead of sitting at "sending" with phantom work queued.
+      await failExhausted(broadcast.id);
       await completeIfDrained(broadcast.id);
       continue;
     }
+
+    // Read once per broadcast per pass, not once per recipient — the file is
+    // the same for everyone on the list.
+    const inline =
+      MEDIA_TRANSPORT === "base64" && broadcast.mediaKey
+        ? await readInline(broadcast.mediaKey)
+        : null;
 
     for (const recipient of claimed) {
       attempted += 1;
@@ -458,9 +571,11 @@ export async function drainBroadcasts(
         ? await sendMedia({
             to: recipient.phoneNumber,
             text: broadcast.body,
-            // A URL, never base64. The gateway fetches it once per recipient
-            // instead of this process re-encoding the file for each of them.
-            url: broadcastMediaUrl(broadcast.mediaKey),
+            // Inline when WHATSAPP_MEDIA_TRANSPORT says so and the file is
+            // small enough; otherwise a URL the gateway fetches itself.
+            ...(inline
+              ? { base64: inline }
+              : { url: broadcastMediaUrl(broadcast.mediaKey) }),
             filename: broadcast.mediaFilename ?? undefined,
             kind: broadcast.mediaKind ?? "image",
             mimeType: broadcast.mediaMimeType ?? undefined,
@@ -497,11 +612,74 @@ export async function drainBroadcasts(
       }
     }
 
+    await failExhausted(broadcast.id);
     await refreshCounts(broadcast.id);
     await completeIfDrained(broadcast.id);
   }
 
   return { attempted, sent, failed };
+}
+
+/**
+ * The attachment as base64, or null to fall back to the URL.
+ *
+ * Returns null rather than throwing on every failure path: a broadcast that
+ * cannot read its own file should still go out with a URL and let the report
+ * say what happened, not stop dead because an optional optimisation failed.
+ */
+async function readInline(storageKey: string): Promise<string | null> {
+  if (!hasStorage()) return null;
+
+  try {
+    const object = await getObject(storageKey);
+    if (!object) {
+      console.error(`[whatsapp] broadcast media missing from storage: ${storageKey}`);
+      return null;
+    }
+    if (object.size > MAX_INLINE_BYTES) {
+      console.warn(
+        `[whatsapp] ${storageKey} is ${Math.round(object.size / 1024 / 1024)} MB — sending the URL instead of inlining it`,
+      );
+      return null;
+    }
+
+    const bytes = Buffer.from(await new Response(object.body).arrayBuffer());
+    return bytes.toString("base64");
+  } catch (error) {
+    console.error("[whatsapp] could not read broadcast media for inlining", error);
+    return null;
+  }
+}
+
+/**
+ * Gives up on recipients that have used their attempts.
+ *
+ * The reason is written onto the row so the report says why rather than just
+ * "failed" — the difference between "this number does not work" and "we stopped
+ * trying" is the difference between deleting a lead and ringing them.
+ */
+async function failExhausted(broadcastId: string): Promise<number> {
+  const rows = await db()
+    .update(whatsappBroadcastRecipients)
+    .set({
+      status: "failed",
+      reason: sql`coalesce(${whatsappBroadcastRecipients.reason} || ' · ', '') || ${`gave up after ${MAX_ATTEMPTS} attempts`}`,
+    })
+    .where(
+      and(
+        eq(whatsappBroadcastRecipients.broadcastId, broadcastId),
+        eq(whatsappBroadcastRecipients.status, "queued"),
+        sql`${whatsappBroadcastRecipients.attempts} >= ${MAX_ATTEMPTS}`,
+      ),
+    )
+    .returning({ id: whatsappBroadcastRecipients.id });
+
+  if (rows.length > 0) {
+    console.error(
+      `[whatsapp] broadcast ${broadcastId}: gave up on ${rows.length} recipient(s) after ${MAX_ATTEMPTS} attempts`,
+    );
+  }
+  return rows.length;
 }
 
 /**
@@ -528,6 +706,10 @@ async function claim(broadcastId: string, limit: number) {
             and(
               eq(whatsappBroadcastRecipients.broadcastId, broadcastId),
               eq(whatsappBroadcastRecipients.status, "queued"),
+              // The ceiling. Exhausted rows are swept to `failed` by
+              // failExhausted() so they do not sit queued for ever, invisible
+              // and stopping the broadcast from ever completing.
+              sql`${whatsappBroadcastRecipients.attempts} < ${MAX_ATTEMPTS}`,
             ),
           )
           .orderBy(whatsappBroadcastRecipients.createdAt)
@@ -662,6 +844,23 @@ export async function broadcastRecipients(id: string, limit = 500) {
     })
     .from(whatsappBroadcastRecipients)
     .leftJoin(leads, eq(leads.id, whatsappBroadcastRecipients.leadId))
+    /**
+     * This filter was missing, and it was not a display bug.
+     *
+     * The function took an id and never used it, so it returned up to 500
+     * recipient rows from *every broadcast that has ever existed*, failed-first.
+     * A brand-new broadcast with one recipient showed "4 people — 1 queued, 3
+     * failed", the three being leftovers from an unrelated incident.
+     *
+     * The report page derives `sendable` from these rows, and `sendable` is the
+     * number the send button makes you type back. So the one real safeguard on
+     * this screen was validating a count polluted by other broadcasts — the
+     * operator read a number, retyped it, and confirmed something that was not
+     * what they were looking at. The send path itself was always scoped
+     * correctly, so nothing went to the wrong audience; the check that was
+     * supposed to catch it going to the wrong audience is what broke.
+     */
+    .where(eq(whatsappBroadcastRecipients.broadcastId, id))
     // Problems first: the rows anyone opens this page to look at.
     .orderBy(
       sql`case ${whatsappBroadcastRecipients.status} when 'failed' then 0 when 'sending' then 1 when 'queued' then 2 when 'skipped' then 3 else 4 end`,

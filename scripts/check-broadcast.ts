@@ -13,6 +13,7 @@
  * in docs/whatsapp.md as a manual pass.
  */
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 
 import {
   AUDIENCE_PRESETS,
@@ -359,6 +360,139 @@ check("no media at all is refused before a request is made", async () => {
   // No url and no base64: OpenWA would answer 400, so this is caught earlier.
   assert.equal(result.ok, false);
   assert.equal(sent, null);
+});
+
+// --- scoping, pacing and giving up -----------------------------------------
+//
+// Three defects found after the first live broadcast. Two of them only show up
+// with real data, so they get the cheapest check that still catches them: the
+// SQL a query builds and the source of the function itself, read without ever
+// connecting to Postgres.
+
+process.env.DATABASE_URL ??= "postgresql://u:p@localhost:5432/unused";
+
+const SOURCE = new URL("../lib/crm/whatsapp/broadcast.ts", import.meta.url);
+
+/** The body of one exported function, for asserting on what it contains. */
+async function sourceOf(name: string): Promise<string> {
+  const source = await readFile(SOURCE, "utf8");
+  const from = source.indexOf(`export async function ${name}`);
+  assert.notEqual(from, -1, `${name} should exist`);
+  const body = source.slice(from);
+  return body.slice(0, body.indexOf("\n}\n"));
+}
+
+check("the recipient list for a broadcast filters by that broadcast", async () => {
+  // The shipped bug: broadcastRecipients(id) took the id and never used it, so
+  // it returned up to 500 rows across every broadcast ever created. A
+  // one-recipient broadcast reported "4 people — 1 queued, 3 failed", the three
+  // being leftovers from an unrelated incident. The report page derives the
+  // typed-confirmation count from these rows, so the one safeguard on that
+  // screen was validating a number that did not belong to what was on it.
+  const fn = await sourceOf("broadcastRecipients");
+  assert.match(
+    fn,
+    /whatsappBroadcastRecipients\.broadcastId, id/,
+    "broadcastRecipients must filter on the id it was given",
+  );
+
+  // And that such a filter is really what Postgres ends up with.
+  const { db } = await import("../lib/db");
+  const { whatsappBroadcastRecipients } = await import("../lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const scoped = db()
+    .select({ id: whatsappBroadcastRecipients.id })
+    .from(whatsappBroadcastRecipients)
+    .where(eq(whatsappBroadcastRecipients.broadcastId, "b-1"))
+    .toSQL();
+
+  assert.match(scoped.sql, /broadcast_id/, "the column must appear in the where");
+});
+
+check("giving up is capped, and the manual retry agrees with the loop", async () => {
+  const { MAX_ATTEMPTS } = await import("../lib/crm/whatsapp/broadcast");
+
+  // One row reached 28 attempts, because the automatic loop had no ceiling at
+  // all while requeueFailed quietly enforced one.
+  assert.ok(MAX_ATTEMPTS >= 1, "a cap of zero would send to nobody");
+  assert.ok(
+    MAX_ATTEMPTS <= 10,
+    `${MAX_ATTEMPTS} attempts is not a retry policy, it is a loop`,
+  );
+
+  const source = await readFile(SOURCE, "utf8");
+  // Both the claim query and requeueFailed read the same constant, so they
+  // cannot drift into the loop retrying what the button refuses.
+  assert.ok(
+    (source.match(/MAX_ATTEMPTS\}/g) ?? []).length >= 2,
+    "the cap belongs in both the claim query and requeueFailed",
+  );
+  assert.doesNotMatch(
+    source,
+    /attempts\} < 3/,
+    "no hardcoded 3 left — the constant is the only place the number lives",
+  );
+});
+
+check("cancelling a broadcast also stops its queued recipients", async () => {
+  // Cancelling used to touch only the broadcast row, leaving its queued rows
+  // claimable; requeueFailed then put the broadcast back to sending and brought
+  // the whole abandoned queue with it.
+  const fn = await sourceOf("setBroadcastStatus");
+
+  assert.match(fn, /whatsappBroadcastRecipients/, "cancel must reach the rows");
+  assert.match(fn, /transaction/, "in one transaction with the status change");
+  // Pausing must NOT cascade — a paused broadcast resumes with its queue, and
+  // that difference is the whole point of having two buttons.
+  assert.match(
+    fn,
+    /status === "cancelled"/,
+    "the cascade is conditional on cancelled, not on any status change",
+  );
+});
+
+check("requeueing failures cannot restart a cancelled broadcast", async () => {
+  const fn = await sourceOf("requeueFailed");
+  assert.match(
+    fn,
+    /cancelled/,
+    "cancelled is terminal — retrying its failures must not resume it",
+  );
+});
+
+check("the rate limit is checked before a recipient is claimed", async () => {
+  // Claiming increments `attempts`. Finding out about the rate limit afterwards
+  // spent a retry on someone nothing had tried to message — and with a cap on
+  // attempts, that is how a recipient ends up permanently failed because the
+  // gateway happened to be busy.
+  const source = await readFile(SOURCE, "utf8");
+  const drain = source.slice(source.indexOf("export async function drainBroadcasts"));
+
+  const budgetAt = drain.indexOf("hasSendBudget()");
+  const claimAt = drain.indexOf("await claim(");
+
+  assert.notEqual(budgetAt, -1, "the drain loop must ask for budget");
+  assert.ok(
+    budgetAt < claimAt,
+    "the budget check has to come before the claim, not after",
+  );
+});
+
+check("inline media travels as base64, not as a URL", async () => {
+  // The transport that sidesteps the gateway fetching our HTTPS URL — the step
+  // that fails silently when its container loses its trust store.
+  const { sent, result } = await capture({
+    to: "919876543210",
+    text: "A caption",
+    kind: "image",
+    base64: "aGVsbG8=",
+  });
+
+  assert.ok(result.ok);
+  assert.equal(sent?.body.base64, "aGVsbG8=");
+  assert.equal(sent?.body.url, undefined, "one or the other, never both");
+  assert.ok(sent?.url.endsWith("/messages/send-image"));
 });
 
 // Awaited inside a main(), because tsx compiles these scripts to CommonJS and
