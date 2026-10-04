@@ -320,11 +320,14 @@ check("a document goes to send-document with its filename and mimetype", async (
   assert.equal(sent?.body.mimetype, "application/pdf");
 });
 
-check("a document with no content type is refused, not guessed", async () => {
+check("a document whose content type cannot be worked out is refused", async () => {
   const { sent, result } = await capture({
     ...photo,
     kind: "document",
-    filename: "brochure.pdf",
+    // No stored type and no extension to derive one from. A ".pdf" here would
+    // now be derived rather than refused, which is the better answer — that
+    // case is covered by "a missing content type is derived from the filename".
+    filename: "brochure",
   });
 
   assert.equal(result.ok, false, "it must not be sent");
@@ -487,12 +490,118 @@ check("inline media travels as base64, not as a URL", async () => {
     text: "A caption",
     kind: "image",
     base64: "aGVsbG8=",
+    mimeType: "image/jpeg",
   });
 
   assert.ok(result.ok);
   assert.equal(sent?.body.base64, "aGVsbG8=");
   assert.equal(sent?.body.url, undefined, "one or the other, never both");
   assert.ok(sent?.url.endsWith("/messages/send-image"));
+});
+
+check("inline media carries its content type, which OpenWA requires", async () => {
+  // The bug the base64 diagnostic hit immediately: mimetype was written only
+  // for documents, so every inline image came back
+  // "400 mimetype is required when using base64 data" — and the one transport
+  // added to diagnose the url path could not be used at all.
+  //
+  // With a URL the gateway learns the type from the fetch. With inline bytes
+  // there is nothing to learn it from.
+  const { sent, result } = await capture({
+    to: "919876543210",
+    text: "A caption",
+    kind: "image",
+    base64: "aGVsbG8=",
+    mimeType: "image/jpeg",
+  });
+
+  assert.ok(result.ok, `the send should succeed: ${result.ok ? "" : result.error}`);
+  assert.equal(sent?.body.mimetype, "image/jpeg");
+  assert.equal(sent?.body.base64, "aGVsbG8=");
+});
+
+check("an inline video carries its content type too, not just documents", async () => {
+  const { sent } = await capture({
+    to: "919876543210",
+    text: "A caption",
+    kind: "video",
+    base64: "aGVsbG8=",
+    mimeType: "video/mp4",
+  });
+  assert.equal(sent?.body.mimetype, "video/mp4");
+});
+
+check("a missing content type is derived from the filename", async () => {
+  // media_mime_type is recorded on upload, so this should never be needed —
+  // but a row that predates it, or one inserted by hand, should not cost a
+  // send when the answer is sitting in the filename.
+  const { sent, result } = await capture({
+    to: "919876543210",
+    text: "A caption",
+    kind: "image",
+    base64: "aGVsbG8=",
+    filename: "the-arbour-balcony.JPG",
+  });
+
+  assert.ok(result.ok);
+  assert.equal(sent?.body.mimetype, "image/jpeg", "case-insensitive on the extension");
+});
+
+check("inline media with no derivable content type is refused, not sent", async () => {
+  const { sent, result } = await capture({
+    to: "919876543210",
+    text: "A caption",
+    kind: "image",
+    base64: "aGVsbG8=",
+    filename: "no-extension",
+  });
+
+  // Refused here rather than as a bare 400 from the gateway, so the broadcast
+  // report says which broadcast and why.
+  assert.equal(result.ok, false);
+  assert.equal(sent, null, "nothing should reach the gateway");
+  if (!result.ok) assert.match(result.error, /content type/i);
+});
+
+check("a URL send is left alone — no mimetype is forced onto it", async () => {
+  // Deliberately unchanged while the url transport is still being diagnosed:
+  // the gateway reads the type from its own fetch, and adding a field to a
+  // payload that is mid-investigation only muddies the result.
+  const { sent } = await capture({
+    to: "919876543210",
+    text: "A caption",
+    kind: "image",
+    url: "https://living.test/media/whatsapp/broadcasts/1-abc.jpg",
+    mimeType: "image/jpeg",
+  });
+
+  assert.equal(sent?.body.url, "https://living.test/media/whatsapp/broadcasts/1-abc.jpg");
+  assert.equal(sent?.body.mimetype, undefined);
+});
+
+check("a media send gets a longer timeout than a status check", async () => {
+  const { openWAConfig } = await import("../lib/integrations/whatsapp/config");
+  const config = openWAConfig();
+
+  // Not a fix for the indefinite hang — that survived 30s with the container
+  // idle, so it is not slowness. But ten seconds was always the wrong budget
+  // for the one call that moves megabytes.
+  assert.ok(
+    config.mediaTimeoutMs > config.timeoutMs,
+    `media (${config.mediaTimeoutMs}ms) must get more room than the general timeout (${config.timeoutMs}ms)`,
+  );
+});
+
+check("the panel can say where the gateway will fetch attachments from", async () => {
+  // APP_BASE_URL unset on staging made every broadcast point its media fetch at
+  // production, because the fallback is the production URL and the fallback is
+  // correct in production. Nothing said so, which is the whole problem.
+  const { mediaDelivery } = await import("../lib/crm/whatsapp/broadcast");
+  process.env.APP_BASE_URL = "https://staging.livingbyitr.com";
+
+  const delivery = mediaDelivery();
+  assert.equal(delivery.origin, "https://staging.livingbyitr.com");
+  assert.ok(["url", "base64"].includes(delivery.transport));
 });
 
 // Awaited inside a main(), because tsx compiles these scripts to CommonJS and

@@ -14,6 +14,7 @@ import {
 } from "@/lib/crm/whatsapp/audience";
 import {
   listBroadcasts,
+  mediaDelivery,
   queuedTotal,
   releaseDueBroadcasts,
   scheduledBroadcasts,
@@ -64,6 +65,9 @@ export default async function MessagingPage() {
   // here, and a component may not read a clock during render anyway.
   const today = istDate();
   const tomorrow = istDatePlusDays(1);
+
+  // Where the gateway will fetch attachments from, printed below the queue.
+  const delivery = mediaDelivery();
 
   const [
     broadcasts,
@@ -152,6 +156,25 @@ export default async function MessagingPage() {
           />
 
           <QueueControls queued={queued} scheduled={scheduled.length} />
+
+          {/* Visible because it being invisible cost a day: APP_BASE_URL unset
+              on staging made every broadcast fetch its image from production,
+              and nothing anywhere said so. */}
+          <p className="text-xs text-stone-500">
+            Attachments are delivered{" "}
+            {delivery.transport === "base64" ? (
+              <>
+                <strong>inline</strong> — the gateway does not fetch anything
+              </>
+            ) : (
+              <>
+                by URL from{" "}
+                <span className="mono text-stone-700">{delivery.origin}</span> —
+                the gateway must be able to reach that host over HTTPS
+              </>
+            )}
+            .
+          </p>
 
           {scheduled.length > 0 && (
             <ul className="flex flex-col gap-1 border-t border-stone-200 pt-3">

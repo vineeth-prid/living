@@ -36,14 +36,14 @@ async function request<T>(
   method: "GET" | "POST" | "DELETE",
   path: string,
   body?: unknown,
-  { retry = method === "GET" } = {},
+  { retry = method === "GET", timeoutMs = config.timeoutMs } = {},
 ): Promise<T> {
   const attempts = retry ? Math.max(1, config.maxRetries) : 1;
   let lastError: OpenWAError | null = null;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      return await once<T>(config, method, path, body);
+      return await once<T>(config, method, path, body, timeoutMs);
     } catch (error) {
       const failure =
         error instanceof OpenWAError
@@ -64,9 +64,10 @@ async function once<T>(
   method: string,
   path: string,
   body?: unknown,
+  timeoutMs = config.timeoutMs,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${config.baseUrl}${path}`, {
@@ -110,7 +111,7 @@ async function once<T>(
     if (error instanceof OpenWAError) throw error;
     if (error instanceof Error && error.name === "AbortError") {
       throw new OpenWAError(
-        `OpenWA ${method} ${path} timed out after ${config.timeoutMs}ms.`,
+        `OpenWA ${method} ${path} timed out after ${timeoutMs}ms.`,
         null,
         true,
       );
@@ -189,6 +190,32 @@ const MEDIA_ENDPOINTS: Partial<Record<MediaSendKind, string>> = {
   video: "/messages/send-video",
   document: "/messages/send-document",
 };
+
+/**
+ * Last-resort content type, from the filename.
+ *
+ * The stored `media_mime_type` is the real source — the composer records
+ * `file.type` on upload. This covers only the case where that is somehow absent,
+ * and deliberately covers just the extensions the composer accepts rather than
+ * becoming a mime database.
+ */
+function guessMimeType(filename: string | undefined): string | undefined {
+  const extension = filename?.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  if (!extension) return undefined;
+
+  const known: Record<string, string> = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    avif: "image/avif",
+    gif: "image/gif",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    pdf: "application/pdf",
+  };
+  return known[extension];
+}
 
 export const openWA = {
   config: openWAConfig,
@@ -279,7 +306,12 @@ export const openWA = {
       );
     }
 
-    if (kind === "document" && !payload.mimeType) {
+    // Derived from the filename when the stored content type is missing, which
+    // it should not be — the composer records file.type on upload — but a row
+    // predating that, or a hand-inserted one, should not cost a send.
+    const mimeType = payload.mimeType ?? guessMimeType(payload.filename);
+
+    if (kind === "document" && !mimeType) {
       // WhatsApp renders a document with no content type as an unopenable blob.
       // Better to fail here, where the report says why.
       throw new OpenWAError(
@@ -289,15 +321,42 @@ export const openWA = {
       );
     }
 
+    if (payload.base64 && !mimeType) {
+      // OpenWA validates this immediately — "mimetype is required when using
+      // base64 data" — so refusing here says the same thing with the context
+      // of which broadcast it was, instead of a bare 400 in the report.
+      throw new OpenWAError(
+        "Inline media needs its content type, and none reached the provider.",
+        null,
+        false,
+      );
+    }
+
     // Only the fields that have a value. A strict validator on the gateway
     // rejects an explicit null where it accepts an absent key.
     const body: Record<string, unknown> = { chatId: payload.chatId };
     if (payload.url) body.url = payload.url;
-    if (payload.base64) body.base64 = payload.base64;
     if (payload.caption) body.caption = payload.caption;
+
+    if (payload.base64) {
+      body.base64 = payload.base64;
+      /**
+       * Required, for every kind — not just documents.
+       *
+       * With a URL the gateway learns the type from the fetch response. With
+       * inline bytes there is nothing to learn it from, so OpenWA rejects the
+       * request outright: "mimetype is required when using base64 data". This
+       * was set only for documents, which made the base64 transport — the one
+       * thing added to diagnose the url path — fail on every image.
+       */
+      body.mimetype = mimeType;
+    }
+
     if (kind === "document") {
       body.filename = payload.filename ?? "document";
-      body.mimetype = payload.mimeType;
+      // Also on a URL send: WhatsApp needs it to render the document at all,
+      // and a fetch that answers application/octet-stream does not provide it.
+      body.mimetype = mimeType;
     }
 
     return request<OpenWASendResult>(
@@ -305,7 +364,17 @@ export const openWA = {
       "POST",
       `/api/sessions/${encodeURIComponent(config.sessionId)}${path}`,
       body,
-      { retry: false },
+      /**
+       * Media gets its own, longer budget.
+       *
+       * Not a fix for the indefinite hang seen on the url transport — that
+       * survived 30 seconds with the container idle, so it is not slowness. But
+       * ten seconds was always the wrong budget for an upload: it is the one
+       * call here that moves megabytes, and once the gateway can actually fetch
+       * our files a real photo over a real link will sometimes take longer than
+       * a status check.
+       */
+      { retry: false, timeoutMs: config.mediaTimeoutMs },
     );
   },
 

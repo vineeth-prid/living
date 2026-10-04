@@ -85,6 +85,30 @@ const MAX_INLINE_BYTES = Number(
   process.env.WHATSAPP_MAX_INLINE_BYTES ?? 8 * 1024 * 1024,
 );
 
+/**
+ * What the panel shows about how media will be delivered.
+ *
+ * This exists because of a silent misconfiguration that cost a day: APP_BASE_URL
+ * was unset on staging, `appBaseUrl()` falls back to the production URL when it
+ * is, and so every broadcast from the staging admin panel told the gateway to
+ * fetch its image from livingbyitr.com. Nothing was wrong on either machine and
+ * nothing said anything — the fallback is correct in production, which is
+ * exactly what makes it invisible everywhere else.
+ *
+ * Printing the origin next to the composer does not prevent it, but it does mean
+ * somebody looking at the screen can see it.
+ */
+export function mediaDelivery(): { transport: string; origin: string } {
+  let origin = "unknown";
+  try {
+    origin = new URL(broadcastMediaUrl("/probe")).origin;
+  } catch {
+    // A malformed APP_BASE_URL. Saying "unknown" is the honest answer, and it
+    // is itself the signal that something needs looking at.
+  }
+  return { transport: MEDIA_TRANSPORT, origin };
+}
+
 export type NewBroadcast = {
   name: string;
   body: string;

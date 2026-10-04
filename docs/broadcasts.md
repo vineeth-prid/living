@@ -211,7 +211,15 @@ because the OpenWA Dockerfile does not install them and every
 `--force-recreate` wipes a live patch — that fetch fails silently and the symptom
 is exactly this: clean success, no message.
 
-So the first thing to try is:
+**Check `APP_BASE_URL` first.** It was unset on staging, and `appBaseUrl()`
+falls back to the production URL when it is — so every broadcast from the
+staging panel told the gateway to fetch its image from `livingbyitr.com`.
+Nothing was misconfigured on either machine and nothing said anything, because
+the fallback is correct in production. The messaging page now prints the origin
+the gateway will fetch from, under the queue, so a wrong one is visible before
+anyone sends.
+
+Then try:
 
 ```dotenv
 WHATSAPP_MEDIA_TRANSPORT=base64
@@ -228,6 +236,25 @@ session reached a genuine `ready` state rather than the
 
 Files above `WHATSAPP_MAX_INLINE_BYTES` (8 MB) use the URL regardless, with a
 line in the log — base64 inflates by a third and travels once per recipient.
+
+**Inline sends must carry a `mimetype`.** OpenWA rejects base64 without one
+("mimetype is required when using base64 data") for every kind, not just
+documents — with a URL it reads the type from its own fetch, and with inline
+bytes there is nothing to read it from. It comes from `media_mime_type`, falling
+back to the filename extension; if neither yields one the send is refused here
+rather than as a bare 400, so the report says which broadcast and why.
+
+### Timeouts
+
+`OPENWA_TIMEOUT_MS` (10s) bounds status checks and text sends and wants to stay
+short, so a dead gateway is noticed quickly. `OPENWA_MEDIA_TIMEOUT_MS` (60s) is
+separate, because a media send is the one call that moves megabytes.
+
+That split is **not** a fix for an indefinite hang. A `url` send that times out
+at 10s and then again at the full 30s, with the gateway container idle, is not
+slow — it is stuck, and the leading suspect is the missing `ca-certificates`
+below making an outbound HTTPS fetch hang instead of failing fast. Raising a
+clock does not fix a hang; it just takes longer to say so.
 
 ### When a media send fails
 
