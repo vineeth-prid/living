@@ -73,8 +73,11 @@ export default async function HomesPage({
         ) : (
           <>
             {/* A plain GET form: works without JavaScript, and the result is a
-                URL. Leaving `page` out means a new filter starts on page one. */}
+                URL. Leaving `page` out means a new filter starts on page one.
+                Keyed by the query: "Clear" is a client-side navigation, and a
+                reused form would keep showing the old selections. */}
             <form
+              key={query}
               action="/homes#listings"
               className="mb-10 grid items-end gap-4 sm:grid-cols-[1fr_1fr_auto]"
             >

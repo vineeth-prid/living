@@ -19,6 +19,7 @@ import { eq, inArray, like } from "drizzle-orm";
 
 import { db, hasDatabase } from "../lib/db";
 import {
+  leadActivities,
   leadSources,
   leads,
   users,
@@ -28,7 +29,8 @@ import {
   whatsappSessions,
   whatsappWebhookEvents,
 } from "../lib/db/schema";
-import { findDuplicateLeads } from "../lib/leads";
+import { createLead, findDuplicateLeads } from "../lib/leads";
+import { handleCustomerMessage } from "../lib/crm/whatsapp/customer";
 import { resolveSender } from "../lib/integrations/whatsapp/identity";
 import { resolveLead } from "../lib/crm/whatsapp/resolve";
 import { isAllowed } from "../lib/crm/whatsapp/registry";
@@ -81,6 +83,8 @@ async function main() {
     dupeB: newId(),
     conversation: newId(),
     message: newId(),
+    strangerContact: newId(),
+    strangerConversation: newId(),
   };
 
   // Distinct last-ten digits, since that is the matching key.
@@ -494,15 +498,98 @@ async function main() {
       assert.ok(row.error);
       assert.equal(row.direction, "outbound");
     });
+
+    // --- A message never creates a lead; adding one by hand pins the thread --
+    const stranger = "919000000401";
+    await db().insert(whatsappContacts).values({
+      id: ids.strangerContact,
+      nationalDigits: stranger.slice(-10),
+      phoneNumber: stranger,
+      contactType: "unknown",
+    });
+    await db().insert(whatsappConversations).values({
+      id: ids.strangerConversation,
+      sessionId: ids.session,
+      contactId: ids.strangerContact,
+      chatId: `${stranger}@c.us`,
+    });
+    const inbound = (text: string) =>
+      db().insert(whatsappMessages).values({
+        id: newId(),
+        conversationId: ids.strangerConversation,
+        direction: "inbound",
+        senderPhone: stranger,
+        text,
+        status: "processed",
+      });
+    const strangerContact = async () =>
+      (await db().select().from(whatsappContacts).where(eq(whatsappContacts.id, ids.strangerContact)))[0];
+
+    await check("a WhatsApp message from an unknown number creates no lead", async () => {
+      await inbound("hello there, saw your listings");
+      await handleCustomerMessage({
+        conversationId: ids.strangerConversation,
+        leadId: null,
+        contactId: ids.strangerContact,
+        fromPhone: stranger,
+        senderName: `${TAG} Stranger`,
+        text: "hello there, saw your listings",
+      });
+      assert.equal((await findDuplicateLeads(stranger)).length, 0);
+      assert.equal((await strangerContact()).leadId, null);
+    });
+
+    await check("adding that number as a lead by hand pins its WhatsApp thread", async () => {
+      const lead = await createLead({
+        name: `${TAG} Stranger`,
+        mobile: "+91 90000 00401",
+        createdById: ids.active,
+      });
+      const contact = await strangerContact();
+      assert.equal(contact.leadId, lead.id);
+      assert.equal(contact.contactType, "customer");
+      const [conversation] = await db()
+        .select({ leadId: whatsappConversations.leadId })
+        .from(whatsappConversations)
+        .where(eq(whatsappConversations.id, ids.strangerConversation));
+      assert.equal(conversation.leadId, lead.id);
+    });
+
+    await check("their next message lands on that lead, and makes no second one", async () => {
+      const sender = await resolveSender(stranger.slice(-10));
+      assert.equal(sender.kind, "customer");
+      if (sender.kind !== "customer") return;
+      await inbound("following up on my enquiry");
+      await handleCustomerMessage({
+        conversationId: ids.strangerConversation,
+        leadId: sender.leadId,
+        contactId: ids.strangerContact,
+        fromPhone: stranger,
+        senderName: `${TAG} Stranger`,
+        text: "following up on my enquiry",
+      });
+      assert.equal((await findDuplicateLeads(stranger)).length, 1);
+      const timeline = await db()
+        .select({ summary: leadActivities.summary })
+        .from(leadActivities)
+        .where(eq(leadActivities.leadId, sender.leadId));
+      assert.ok(timeline.some((a) => a.summary.includes("following up on my enquiry")));
+    });
   } finally {
     // Always, so a failure does not leave test rows in a real database.
     await db().delete(whatsappMessages).where(eq(whatsappMessages.id, ids.message));
     await db()
+      .delete(whatsappMessages)
+      .where(eq(whatsappMessages.conversationId, ids.strangerConversation));
+    await db()
       .delete(whatsappConversations)
-      .where(eq(whatsappConversations.id, ids.conversation));
+      .where(inArray(whatsappConversations.id, [ids.conversation, ids.strangerConversation]));
     await db()
       .delete(whatsappContacts)
-      .where(inArray(whatsappContacts.id, [ids.contact, ids.blockedContact]));
+      .where(
+        inArray(whatsappContacts.id, [ids.contact, ids.blockedContact, ids.strangerContact]),
+      );
+    await db().delete(leads).where(like(leads.name, `${TAG} Stranger`));
     await db().delete(whatsappSessions).where(eq(whatsappSessions.id, ids.session));
     await db()
       .delete(whatsappWebhookEvents)

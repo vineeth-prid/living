@@ -62,8 +62,9 @@ export async function resolveSender(nationalDigits: string): Promise<WhatsAppSen
         eq(users.isActive, true),
         eq(users.whatsappEnabled, true),
         // Either the dedicated WhatsApp number or, when that is blank, the
-        // employee's mobile.
-        sql`${lastTen(users.whatsappNumber)} = ${nationalDigits} or (${users.whatsappNumber} is null and ${lastTen(users.mobile)} = ${nationalDigits})`,
+        // employee's mobile. The outer brackets matter: `and()` does not add
+        // them, and without them this `or` escaped the active/enabled checks.
+        sql`(${lastTen(users.whatsappNumber)} = ${nationalDigits} or (${users.whatsappNumber} is null and ${lastTen(users.mobile)} = ${nationalDigits}))`,
       ),
     )
     .limit(1);
