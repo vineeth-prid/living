@@ -315,7 +315,13 @@ export function Listings({ items }: { items: Property[] }) {
   const [active, setActive] = useState<Property | null>(null);
   return (
     <>
-      <Stagger className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Keyed by what it shows. Paging swaps the cards inside a grid that has
+          already played its once-only reveal, so new cards mounted hidden and
+          stayed hidden. A new set of cards gets a fresh grid and its own reveal. */}
+      <Stagger
+        key={items.map((p) => p.id).join()}
+        className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+      >
         {items.map((p) => (
           <StaggerItem key={p.id} className="h-full">
             <PropertyCard property={p} onOpen={() => setActive(p)} />
