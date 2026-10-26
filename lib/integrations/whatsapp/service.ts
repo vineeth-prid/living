@@ -11,7 +11,7 @@ import { newId } from "@/lib/ids";
 import { OUTBOUND_RATE, isWhatsAppEnabled, openWAConfig } from "./config";
 import { OpenWAProvider } from "./openwa/provider";
 import { normalisePhone } from "./phone";
-import type { SendResult, WhatsAppProvider } from "./types";
+import type { MediaSendKind, SendResult, WhatsAppProvider } from "./types";
 
 // The seam (§2). CRM code calls this module and never a provider directly, so
 // swapping OpenWA for Meta's Cloud API touches one function here and nothing
@@ -180,6 +180,22 @@ function throttleCheck(): string | null {
   return null;
 }
 
+/**
+ * Is there room to send right now? Read-only, unlike `throttleCheck`.
+ *
+ * The broadcast loop asks this *before* claiming a recipient. Without it, a
+ * throttled minute returned a retryable failure for a recipient that had
+ * already had its attempt counter incremented — so hitting the rate limit, the
+ * thing that is supposed to be routine, burned a retry on someone nobody had
+ * tried to message yet. With a ceiling on attempts that is how a recipient ends
+ * up permanently failed for no reason at all.
+ */
+export function hasSendBudget(): boolean {
+  const now = Date.now();
+  const window = (globalForRate.__waWindow ?? []).filter((t) => now - t < 60_000);
+  return window.length < OUTBOUND_RATE.perMinute;
+}
+
 async function spaceOut() {
   const gap = Date.now() - (globalForRate.__waLastSend ?? 0);
   if (gap < OUTBOUND_RATE.minGapMs) {
@@ -195,12 +211,29 @@ async function spaceOut() {
  * Never throws (§50). An unconfigured, unreachable or rate-limited provider
  * returns a failure that the caller is free to ignore — a CRM write must not
  * roll back because WhatsApp is down.
+ *
+ * `sendText` and `sendMedia` are both this function. They differ in two lines —
+ * what the row records and which provider call runs — and everything that
+ * actually matters (the enabled check, normalisation, the throttle, the stored
+ * row, the status write-back) is shared. Two copies of this would mean the
+ * broadcast path quietly growing its own rate limit.
  */
-export async function sendText(input: {
+async function deliver(input: {
   to: string;
-  text: string;
   /** Ties the message to what caused it, for the conversation timeline. */
   conversationId?: string;
+  messageType: string;
+  /** Body for a text message, caption for media. Stored either way. */
+  text: string;
+  media?: {
+    url?: string;
+    base64?: string;
+    filename?: string;
+    /** Documents will not render without it. */
+    mimeType?: string;
+  };
+  /** Stored on the message row so the broadcast report can join back to it. */
+  messageId?: string;
 }): Promise<SendResult> {
   if (!isWhatsAppEnabled()) {
     return { ok: false, error: "WhatsApp integration is disabled.", retryable: false };
@@ -227,21 +260,39 @@ export async function sendText(input: {
         });
   const conversationId = input.conversationId ?? conversation!.id;
 
-  const messageId = newId();
+  const messageId = input.messageId ?? newId();
   await db().insert(whatsappMessages).values({
     id: messageId,
     conversationId,
     direction: "outbound",
     recipientPhone: phone.phoneNumber,
-    messageType: "text",
+    messageType: input.messageType,
     text: input.text,
+    mediaMetadata: input.media
+      ? { url: input.media.url ?? null, filename: input.media.filename ?? null }
+      : null,
     status: "pending",
   });
 
-  const result = await whatsappProvider().sendText({
-    to: phone.phoneNumber,
-    text: input.text,
-  });
+  const result = input.media
+    ? await whatsappProvider().sendMedia({
+        to: phone.phoneNumber,
+        text: input.text,
+        caption: input.text,
+        url: input.media.url,
+        base64: input.media.base64,
+        filename: input.media.filename,
+        // The two fields that used to stop here. messageType was stored on the
+        // row and then thrown away, so the provider had no idea whether it was
+        // sending a photo or a PDF — and OpenWA has no endpoint that accepts
+        // "some media", only send-image, send-video and send-document.
+        kind: mediaKind(input.messageType),
+        mimeType: input.media.mimeType,
+      })
+    : await whatsappProvider().sendText({
+        to: phone.phoneNumber,
+        text: input.text,
+      });
 
   await db()
     .update(whatsappMessages)
@@ -270,6 +321,70 @@ export async function sendText(input: {
   }
 
   return result;
+}
+
+/**
+ * `message_type` on the stored row is a free-text column that has held whatever
+ * the provider called an inbound message. Narrowing it to the four kinds a send
+ * can actually be happens here, once, rather than at the provider — which would
+ * otherwise have to know which strings the CRM happens to use.
+ */
+function mediaKind(messageType: string): MediaSendKind {
+  if (messageType === "video") return "video";
+  if (messageType === "document") return "document";
+  if (messageType === "audio") return "audio";
+  return "image";
+}
+
+export function sendText(input: {
+  to: string;
+  text: string;
+  conversationId?: string;
+}): Promise<SendResult> {
+  return deliver({ ...input, messageType: "text" });
+}
+
+/**
+ * A photo, video or document with a caption — one message, not two.
+ *
+ * `url` is strongly preferred over `base64`: the gateway fetches it once per
+ * recipient, where base64 would push the whole file through this process and
+ * across the wire again for every person on the list.
+ */
+export function sendMedia(input: {
+  to: string;
+  /** The caption. WhatsApp renders it under the attachment. */
+  text: string;
+  url?: string;
+  base64?: string;
+  filename?: string;
+  /** image | video | document. Decides both the stored type and the endpoint. */
+  kind?: string;
+  /** The file's content type. Required for documents. */
+  mimeType?: string;
+  conversationId?: string;
+  messageId?: string;
+}): Promise<SendResult> {
+  if (!input.url && !input.base64) {
+    return Promise.resolve({
+      ok: false,
+      error: "No media to send — a URL or an inline payload is required.",
+      retryable: false,
+    });
+  }
+  return deliver({
+    to: input.to,
+    text: input.text,
+    conversationId: input.conversationId,
+    messageId: input.messageId,
+    messageType: input.kind ?? "image",
+    media: {
+      url: input.url,
+      base64: input.base64,
+      filename: input.filename,
+      mimeType: input.mimeType,
+    },
+  });
 }
 
 /**
@@ -359,6 +474,7 @@ export const WhatsAppService = {
   provider: whatsappProvider,
   isEnabled: isWhatsAppEnabled,
   sendText,
+  sendMedia,
   retryFailedOutbound,
   currentSession: currentSessionRow,
   recentMessages: (limit?: number) => recentMessages(limit),

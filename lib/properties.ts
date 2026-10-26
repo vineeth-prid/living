@@ -219,7 +219,8 @@ export async function getProperties(): Promise<Property[]> {
     .select(publicColumns)
     .from(propertiesTable)
     .where(isVisible)
-    .orderBy(asc(propertiesTable.sortOrder), asc(propertiesTable.name));
+    // Newest first, so a new listing leads the homepage and /homes.
+    .orderBy(desc(propertiesTable.createdAt), asc(propertiesTable.name));
 
   const media = await galleryFor(rows.map((r) => r.id));
   return rows.map((row) => withGallery(row, media.get(row.id)));

@@ -16,12 +16,27 @@ export type SendTextInput = {
   text: string;
 };
 
+/** What kind of attachment this is. Decides how WhatsApp renders it. */
+export type MediaSendKind = "image" | "video" | "document" | "audio";
+
 export type SendMediaInput = SendTextInput & {
   /** A URL the provider can fetch, or base64 — never both. */
   url?: string;
   base64?: string;
   filename?: string;
   caption?: string;
+  /**
+   * Required in practice, optional only for backwards compatibility.
+   *
+   * It was missing from this type, and that absence was the bug: the caller
+   * knew the kind, the provider needed it to pick an endpoint, and because
+   * nothing in between declared it TypeScript never noticed it being dropped.
+   * Every media broadcast 404ed as a result. A field a provider cannot work
+   * without belongs in the interface, not in a comment.
+   */
+  kind?: MediaSendKind;
+  /** Needed for documents, which WhatsApp will not render without it. */
+  mimeType?: string;
 };
 
 export type SendResult =

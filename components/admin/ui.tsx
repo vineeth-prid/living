@@ -82,15 +82,28 @@ type ButtonProps = ComponentProps<"button"> & {
   size?: "sm" | "md";
 };
 
+/**
+ * `type` defaults to "button", not the HTML default of "submit".
+ *
+ * Every Button in the panel is an action with an onClick; the ones that really
+ * submit a form pass type="submit" and always have. Leaving the HTML default in
+ * place meant a row-action button sitting inside any form would fire its
+ * handler AND submit that form — which is exactly what happened when the
+ * properties table was wrapped in a form for CSV export: clicking Archive
+ * started a download too. Defaulting here fixes it for every caller rather than
+ * for the one table that noticed.
+ */
 export function Button({
   variant = "primary",
   size = "md",
+  type = "button",
   className,
   ...props
 }: ButtonProps) {
   return (
     <button
       {...props}
+      type={type}
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-[10px] font-medium transition disabled:cursor-not-allowed",
         size === "sm" ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm",

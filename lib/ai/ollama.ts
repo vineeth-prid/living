@@ -23,6 +23,29 @@ export class OllamaError extends Error {}
  * still wrong, and only the schema knows that.
  */
 export async function chatJson(messages: OllamaMessage[]): Promise<string> {
+  return chat(messages, { json: true, maxTokens: 512 });
+}
+
+/**
+ * Prose, for a reply a customer will read (lib/crm/whatsapp/assistant.ts).
+ *
+ * Separate from `chatJson` only in `format` and the sampling: an answer in a
+ * chat wants a little warmth, where intent parsing wants the same answer every
+ * time. Both go through the one request function below — two copies of the
+ * timeout, the abort handling and the error translation is how one of them ends
+ * up without a timeout.
+ */
+export async function chatText(
+  messages: OllamaMessage[],
+  { maxTokens = 220 }: { maxTokens?: number } = {},
+): Promise<string> {
+  return chat(messages, { json: false, maxTokens });
+}
+
+async function chat(
+  messages: OllamaMessage[],
+  { json, maxTokens }: { json: boolean; maxTokens: number },
+): Promise<string> {
   const baseUrl = process.env.OLLAMA_BASE_URL;
   const model = process.env.OLLAMA_MODEL;
   if (!baseUrl || !model) {
@@ -47,10 +70,12 @@ export async function chatJson(messages: OllamaMessage[]): Promise<string> {
         stream: false,
         // Structured output. Temperature 0 because this is parsing, not
         // writing — the same message must yield the same intent twice running.
-        format: "json",
+        ...(json ? { format: "json" } : {}),
         options: {
-          temperature: Number(process.env.OLLAMA_TEMPERATURE ?? 0),
-          num_predict: 512,
+          temperature: json
+            ? Number(process.env.OLLAMA_TEMPERATURE ?? 0)
+            : Number(process.env.OLLAMA_REPLY_TEMPERATURE ?? 0.3),
+          num_predict: maxTokens,
         },
       }),
       signal: controller.signal,

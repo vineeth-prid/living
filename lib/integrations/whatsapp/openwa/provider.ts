@@ -61,6 +61,11 @@ export class OpenWAProvider implements WhatsAppProvider {
     return attempt(() =>
       openWA.sendMedia({
         chatId: chatIdFor(input.to),
+        // Forwarded, not defaulted. The default lives in the client, where the
+        // endpoint is chosen, so there is one place that decides what an
+        // unknown kind means rather than two that could disagree.
+        kind: input.kind,
+        mimeType: input.mimeType,
         url: input.url,
         base64: input.base64,
         filename: input.filename,

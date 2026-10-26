@@ -15,6 +15,7 @@ import {
   relativeDue,
 } from "@/components/admin/crm";
 import {
+  DeleteLeadButton,
   FollowUpPanel,
   InteractionLogger,
   LeadControls,
@@ -58,6 +59,7 @@ export default async function LeadDetailPage({
             <LinkButton href={`/admin/leads/${lead.id}/edit`} size="sm">
               Edit details
             </LinkButton>
+            {isAdmin && <DeleteLeadButton id={lead.id} name={lead.name} />}
           </div>
         }
       />

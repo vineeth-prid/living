@@ -19,6 +19,7 @@ import {
   filterClass,
 } from "@/components/admin/ui";
 import { PropertyRowActions } from "./row-actions";
+import { ExportSelection } from "./export-selection";
 
 export const metadata = { title: "Properties" };
 
@@ -68,6 +69,23 @@ export default async function PropertiesPage({
     params.set("page", String(n));
     return `/admin/properties?${params}`;
   };
+
+  /**
+   * Export everything the current filters match, not just this page.
+   *
+   * `page` and `sort` are dropped: the export is unpaginated, and the file is
+   * ordered by reference so it reads like a register rather than inheriting
+   * whichever column the screen happened to be sorted by.
+   */
+  const exportAllHref = (() => {
+    const params = new URLSearchParams(
+      Object.entries(sp).filter(
+        ([key, value]) => value && key !== "page" && key !== "sort",
+      ) as [string, string][],
+    );
+    const query = params.toString();
+    return `/admin/properties/export${query ? `?${query}` : ""}`;
+  })();
 
   return (
     <>
@@ -132,9 +150,17 @@ export default async function PropertiesPage({
         />
       ) : (
         <>
+          <ExportSelection
+            total={total}
+            pageCount={rows.length}
+            exportAllHref={exportAllHref}
+          >
           <TableWrap>
             <thead>
               <tr>
+                <Th className="w-10">
+                  <span className="sr-only">Select</span>
+                </Th>
                 <Th>Reference</Th>
                 <Th>Property</Th>
                 <Th>Location</Th>
@@ -150,6 +176,17 @@ export default async function PropertiesPage({
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id} className="hover:bg-stone-50">
+                  <Td>
+                    {/* Plain input, named for the export route's query string.
+                        The form around the table is what submits it. */}
+                    <input
+                      type="checkbox"
+                      name="ids"
+                      value={row.id}
+                      aria-label={`Select ${row.name}`}
+                      className="h-4 w-4 accent-[var(--color-pine-600)]"
+                    />
+                  </Td>
                   <Td className="mono text-xs text-stone-500">{row.reference ?? "—"}</Td>
                   <Td>
                     <Link
@@ -195,6 +232,7 @@ export default async function PropertiesPage({
               ))}
             </tbody>
           </TableWrap>
+          </ExportSelection>
 
           {pages > 1 && (
             <nav className="mt-4 flex items-center justify-center gap-2 text-sm">

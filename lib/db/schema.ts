@@ -872,6 +872,17 @@ export const whatsappContacts = pgTable(
      * every row's meaning.
      */
     isAllowed: boolean("is_allowed").notNull().default(true),
+    /**
+     * When this number asked to stop receiving broadcasts (§B4).
+     *
+     * Deliberately separate from `isAllowed`. Those are different questions:
+     * "stop sending me offers" must not also stop Living answering their
+     * enquiry, and silencing a nuisance number must not read in the audit as
+     * the customer having opted out. One column answering both would make
+     * every broadcast a choice between spamming someone who asked to be left
+     * alone and ignoring a customer who didn't.
+     */
+    marketingOptOutAt: timestamp("marketing_opt_out_at", { withTimezone: true }),
     lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -1055,5 +1066,214 @@ export const whatsappCommandExecutions = pgTable(
       t.conversationId,
       t.createdAt,
     ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Broadcasts (§B1–B12)
+//
+// One announcement, one media file, many recipients. The thing that makes this
+// not a spam cannon is all in the data model rather than in the UI: a campaign
+// is a queue of recipient rows, each one sent at the gateway's own pace and
+// each one individually accountable. Nothing here sends on insert.
+// ---------------------------------------------------------------------------
+
+export const BROADCAST_STATUSES = [
+  "draft",
+  /**
+   * Armed for a time in the future. Nothing is sent until `scheduled_for`
+   * passes and something releases it.
+   *
+   * Distinct from `draft` on purpose: a draft is unfinished and a scheduled
+   * broadcast is finished and waiting. Only this status is picked up by the
+   * release query, so an abandoned draft with a date left in the field can
+   * never go out on its own.
+   */
+  "scheduled",
+  // Queued and draining. The only status the sender picks rows up from.
+  "sending",
+  // Stopped by hand mid-flight. Resumable — queued rows keep their place.
+  "paused",
+  "completed",
+  // Stopped for good. Queued rows are abandoned, sent ones stay sent.
+  "cancelled",
+] as const;
+export type BroadcastStatus = (typeof BROADCAST_STATUSES)[number];
+
+export const BROADCAST_RECIPIENT_STATUSES = [
+  "queued",
+  /**
+   * Claimed by a sender and in flight.
+   *
+   * Exists so two senders cannot pick up the same row, and so a process that
+   * dies mid-send leaves the row visibly stuck rather than queued — a queued
+   * row would be sent again, and a duplicate WhatsApp message is worse than
+   * one that needs a human to press requeue.
+   *
+   * ponytail: stuck rows are requeued by hand from the broadcast report. A
+   * reaper that did it on a timer is the upgrade, and it needs a heartbeat
+   * column to tell "stuck" from "still going" — not worth it until a send
+   * actually dies in the middle.
+   */
+  "sending",
+  "sent",
+  "failed",
+  /** Opted out, unreachable, or a duplicate number — never attempted. */
+  "skipped",
+] as const;
+export type BroadcastRecipientStatus =
+  (typeof BROADCAST_RECIPIENT_STATUSES)[number];
+
+/**
+ * A broadcast: the media, the words, and who it is going to.
+ *
+ * The recipient list is materialised into `whatsapp_broadcast_recipients` at
+ * the moment it is created, never re-derived from the filter at send time. A
+ * filter re-run an hour later matches a different set of leads, so a campaign
+ * that paused and resumed would silently message people who were never in the
+ * audience the operator approved.
+ */
+export const whatsappBroadcasts = pgTable(
+  "whatsapp_broadcasts",
+  {
+    id: text("id").primaryKey(),
+    /** Internal label, never sent. "Diwali offer", "New Kakkanad tower". */
+    name: text("name").notNull(),
+    /** The message body — WhatsApp sends it as the media caption. */
+    body: text("body").notNull(),
+
+    // --- the attachment, optional: a text-only broadcast is still a broadcast
+    /** MinIO key, as lib/storage.ts returns it. Null for text-only. */
+    mediaKey: text("media_key"),
+    mediaMimeType: text("media_mime_type"),
+    mediaFilename: text("media_filename"),
+    /** image | video | document — decides how WhatsApp renders it. */
+    mediaKind: text("media_kind"),
+
+    status: text("status")
+      .$type<BroadcastStatus>()
+      .notNull()
+      .default("draft"),
+
+    /**
+     * What the operator picked, kept verbatim for the record. Read by nothing
+     * at send time — see the note on the table above.
+     */
+    audience: jsonb("audience"),
+
+    /** Denormalised counters so the list page is one query, not N+1. */
+    totalCount: integer("total_count").notNull().default(0),
+    sentCount: integer("sent_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    skippedCount: integer("skipped_count").notNull().default(0),
+
+    /**
+     * When an armed broadcast should start sending (§S1).
+     *
+     * Stored as an instant, entered as a Kochi wall clock — lib/time.ts does
+     * that conversion, the same one follow-ups use. A naive timestamp here
+     * would mean "10am" was the server's 10am, which on a UTC host is 3:30pm
+     * in Kochi: a Diwali offer going out after dinner.
+     *
+     * Kept after the send too, so the report can say what time was asked for
+     * rather than only what time it actually went.
+     */
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+
+    createdById: text("created_by_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("whatsapp_broadcasts_status_idx").on(t.status, t.createdAt),
+    index("whatsapp_broadcasts_created_idx").on(t.createdAt),
+    // The release query runs on every scheduler tick and asks exactly this:
+    // which armed broadcasts are due? Without the index that is a scan of
+    // every broadcast ever sent, several times a minute, forever.
+    index("whatsapp_broadcasts_due_idx").on(t.status, t.scheduledFor),
+  ],
+);
+
+/**
+ * When each background job last ran, and whether it worked.
+ *
+ * One row per job, upserted on every tick. This exists because "the cron must
+ * not fail" is not a thing code can promise — a crontab can be removed, a
+ * container can be rebuilt without it, a secret can be rotated — so the system
+ * has to be able to say *when it last ran* rather than assume it is running.
+ * Without this a dead scheduler looks exactly like a quiet week, and the way
+ * you find out is a customer who never got the offer.
+ *
+ * Deliberately generic and tiny. It is not a job queue: nothing is dispatched
+ * from here, and losing the table costs the panel its heartbeat reading and
+ * nothing else.
+ */
+export const jobRuns = pgTable("job_runs", {
+  /** The job's own name, e.g. "whatsapp.broadcast_tick". */
+  name: text("name").primaryKey(),
+  lastRunAt: timestamp("last_run_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Last run that finished without throwing. Lags lastRunAt when broken. */
+  lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  /** What the run did — released, sent, failed. For the panel to show. */
+  detail: jsonb("detail"),
+  /** Resets to 0 on success, so a sustained outage is distinguishable. */
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+});
+
+/**
+ * One row per person per broadcast — the queue, and afterwards the receipt.
+ *
+ * The unique index on (broadcast, phone) is the real guarantee: a lead that
+ * appears twice in the selection, or a number shared by two leads, cannot be
+ * messaged twice however the audience was assembled.
+ */
+export const whatsappBroadcastRecipients = pgTable(
+  "whatsapp_broadcast_recipients",
+  {
+    id: text("id").primaryKey(),
+    broadcastId: text("broadcast_id")
+      .notNull()
+      .references(() => whatsappBroadcasts.id, { onDelete: "cascade" }),
+    leadId: text("lead_id").references(() => leads.id, {
+      onDelete: "set null",
+    }),
+    /** Canonical E.164 without the plus, resolved when the list was built. */
+    phoneNumber: text("phone_number").notNull(),
+    /** Snapshotted so the report still reads properly if the lead is renamed. */
+    name: text("name"),
+    status: text("status")
+      .$type<BroadcastRecipientStatus>()
+      .notNull()
+      .default("queued"),
+    /** Why it was skipped, or why the send failed. Shown in the report. */
+    reason: text("reason"),
+    attempts: integer("attempts").notNull().default(0),
+    /** The whatsapp_messages row, so the broadcast joins the normal timeline. */
+    messageId: text("message_id"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("whatsapp_broadcast_recipients_phone_idx").on(
+      t.broadcastId,
+      t.phoneNumber,
+    ),
+    // The sender's only query: the next few queued rows of a sending campaign.
+    index("whatsapp_broadcast_recipients_queue_idx").on(
+      t.broadcastId,
+      t.status,
+    ),
+    index("whatsapp_broadcast_recipients_lead_idx").on(t.leadId),
   ],
 );

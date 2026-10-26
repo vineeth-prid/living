@@ -13,6 +13,14 @@ export type OpenWAConfig = {
   webhookUrl: string;
   webhookSecret: string;
   timeoutMs: number;
+  /**
+   * Budget for a media send specifically — the one call that moves megabytes.
+   *
+   * Separate from `timeoutMs`, which bounds status checks and text sends and
+   * wants to stay short so a dead gateway is noticed quickly. Raising the one
+   * number for both means a broken gateway takes a minute to report.
+   */
+  mediaTimeoutMs: number;
   maxRetries: number;
 };
 
@@ -70,6 +78,7 @@ export function openWAConfig(): OpenWAConfig {
     webhookUrl: process.env.OPENWA_WEBHOOK_URL ?? "",
     webhookSecret: process.env.OPENWA_WEBHOOK_SECRET ?? "",
     timeoutMs: Number(process.env.OPENWA_TIMEOUT_MS ?? 10_000),
+    mediaTimeoutMs: Number(process.env.OPENWA_MEDIA_TIMEOUT_MS ?? 60_000),
     maxRetries: Number(process.env.OPENWA_MAX_RETRIES ?? 3),
   };
 }

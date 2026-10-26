@@ -55,5 +55,7 @@ export function pageWindow(page: number, pages: number): (number | "gap")[] {
 
 /** Page one keeps the clean URL, so /homes never competes with /homes?page=1. */
 export function pageHref(basePath: string, page: number, anchor = ""): string {
-  return `${basePath}${page > 1 ? `?page=${page}` : ""}${anchor}`;
+  // basePath may already carry a query (the /homes filters).
+  const join = basePath.includes("?") ? "&" : "?";
+  return `${basePath}${page > 1 ? `${join}page=${page}` : ""}${anchor}`;
 }
