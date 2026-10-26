@@ -12,6 +12,8 @@ import { parseCsv, toCsv } from "../lib/csv";
 import { priceLabelFor, propertySchema, seoFor } from "../lib/validation/property";
 import { SERVER_ACTION_BODY_LIMIT, UPLOAD_LIMITS } from "../lib/upload-limits";
 import type { Property } from "../lib/properties";
+import { filterProperties, locationsOf } from "../lib/property-filters";
+import { CRORE, LAKH } from "../lib/money";
 import {
   PROPERTIES_PER_PAGE,
   currentPage,
@@ -550,6 +552,28 @@ function main() {
     // Otherwise /homes and /homes?page=1 are two URLs for one page.
     assert.equal(pageHref("/homes", 1, "#listings"), "/homes#listings");
     assert.equal(pageHref("/homes", 2, "#listings"), "/homes?page=2#listings");
+    // A filtered list keeps its filters across pages.
+    assert.equal(
+      pageHref("/homes?budget=50l-1cr", 2, "#listings"),
+      "/homes?budget=50l-1cr&page=2#listings",
+    );
+  });
+
+  check("budget and location filter alone and together", () => {
+    const homes = [
+      { id: "a", priceValue: 40 * LAKH, locality: "Kakkanad" },
+      { id: "b", priceValue: CRORE, locality: "Kakkanad" },
+      { id: "c", priceValue: 80 * LAKH, locality: "Edappally" },
+    ];
+    const ids = (budget?: string, location?: string) =>
+      filterProperties(homes, budget, location).map((h) => h.id);
+    assert.deepEqual(ids(), ["a", "b", "c"]);
+    assert.deepEqual(ids("50l-1cr"), ["c"]); // 1Cr belongs to the next band up
+    assert.deepEqual(ids("1cr-2cr"), ["b"]);
+    assert.deepEqual(ids(undefined, "Kakkanad"), ["a", "b"]);
+    assert.deepEqual(ids("under-50l", "Kakkanad"), ["a"]);
+    assert.deepEqual(ids("nonsense"), ["a", "b", "c"]);
+    assert.deepEqual(locationsOf(homes), ["Edappally", "Kakkanad"]);
   });
 
   console.log(`\n${checks} checks passed`);

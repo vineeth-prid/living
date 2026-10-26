@@ -1,18 +1,14 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   leadActivities,
-  leadSources,
   properties,
-  whatsappContacts,
   whatsappConversations,
   whatsappMessages,
 } from "@/lib/db/schema";
-import { createLead, findDuplicateLeads, linkProperty, recordActivity } from "@/lib/leads";
-import { formatPhone } from "@/lib/integrations/whatsapp/phone";
+import { findDuplicateLeads, linkProperty, recordActivity } from "@/lib/leads";
 import { sendText } from "@/lib/integrations/whatsapp/service";
 import { resolveProperty } from "./resolve";
-import { notifyWhatsAppEnquiry } from "./events";
 import { assistantAnswer } from "./assistant";
 import { setMarketingOptOut } from "./audience";
 import { t } from "./templates";
@@ -20,8 +16,9 @@ import { t } from "./templates";
 // §1/§5/§8. The customer path.
 //
 // There is no branch in this file that can run a CRM command, change a status,
-// or read an internal figure. A customer message becomes a lead or a timeline
-// entry, and can be answered about availability — nothing else. "Delete my
+// or read an internal figure. A customer message becomes a timeline entry on
+// an existing lead (never a new one), and can be answered about availability —
+// nothing else. "Delete my
 // lead" from a customer is a message recorded against their lead, which is
 // exactly what it should be.
 
@@ -65,35 +62,27 @@ export async function handleCustomerMessage(input: {
   // §4. What they are asking about, if it can be told without guessing.
   const property = await propertyInContext(input.conversationId, text);
 
-  const existing = input.leadId ?? (await existingLeadFor(input.fromPhone));
-  const leadId = existing ?? (await createLeadFor(input, text, property?.id ?? null));
-  const isNew = !existing;
+  // A message never creates a lead. An unknown number stays a conversation in
+  // the inbox until someone on the team adds it as a lead — from the thread, or
+  // through any other lead form, which pins the thread to it (createLead).
+  const leadId = input.leadId ?? (await existingLeadFor(input.fromPhone));
 
-  await recordActivity({
-    leadId,
-    kind: "whatsapp_inbound",
-    summary: `WhatsApp: ${text.slice(0, 300)}`,
-  });
+  if (leadId) {
+    await recordActivity({
+      leadId,
+      kind: "whatsapp_inbound",
+      summary: `WhatsApp: ${text.slice(0, 300)}`,
+    });
+  }
 
   if (property) {
     // §4. Kept on both: the lead so the CRM shows the interest, the
     // conversation so the next message has context without re-deriving it.
-    await linkProperty({ leadId, propertyId: property.id, actorId: null });
+    if (leadId) await linkProperty({ leadId, propertyId: property.id, actorId: null });
     await db()
       .update(whatsappConversations)
       .set({ propertyId: property.id, updatedAt: new Date() })
       .where(eq(whatsappConversations.id, input.conversationId));
-  }
-
-  // §7. The team hears about a new enquiry. createLead already emails them
-  // (notifyWebsiteEnquiry); this adds the WhatsApp notice for staff who have it
-  // enabled, and only on the first message — not on every reply.
-  if (isNew) {
-    void notifyWhatsAppEnquiry({
-      leadId,
-      name: input.senderName?.trim() || formatPhone(input.fromPhone),
-      propertyLabel: property?.reference ?? property?.name ?? null,
-    });
   }
 
   // §29. Availability is answered from the database, never from what an older
@@ -126,19 +115,21 @@ export async function handleCustomerMessage(input: {
       text: assisted.text,
       conversationId: input.conversationId,
     });
-    await recordActivity({
-      leadId,
-      kind: "whatsapp_outbound",
-      // Recorded as the assistant's, not a colleague's. Someone reading the
-      // timeline next week has to be able to tell which replies a person sent.
-      summary: `Auto-reply (${assisted.model}): ${assisted.text.slice(0, 280)}`,
-    });
+    if (leadId) {
+      await recordActivity({
+        leadId,
+        kind: "whatsapp_outbound",
+        // Recorded as the assistant's, not a colleague's. Someone reading the
+        // timeline next week has to be able to tell which replies a person sent.
+        summary: `Auto-reply (${assisted.model}): ${assisted.text.slice(0, 280)}`,
+      });
+    }
     return;
   }
 
   // §6. Otherwise acknowledge once, on first contact only. A reply to every
   // message is an auto-responder, which is how a number gets reported.
-  if (isNew) {
+  if (!leadId && (await inboundCount(input.conversationId)) === 1) {
     await sendText({
       to: input.fromPhone,
       text: t.customerAcknowledged(property?.reference ?? null),
@@ -176,62 +167,18 @@ async function existingLeadFor(phone: string): Promise<string | null> {
   return duplicates[0]?.id ?? null;
 }
 
-async function createLeadFor(
-  input: {
-    contactId: string;
-    conversationId: string;
-    fromPhone: string;
-    senderName: string | null;
-  },
-  text: string,
-  propertyId: string | null,
-): Promise<string> {
-  const lead = await createLead({
-    name: input.senderName?.trim() || `WhatsApp ${formatPhone(input.fromPhone)}`,
-    mobile: input.fromPhone,
-    // §2. Null rather than a key that isn't there: the source list is seeded
-    // data, and a missing row must cost the attribution, never the enquiry.
-    sourceKey: await whatsappSourceKey(),
-    initialMessage: text.slice(0, 2000),
-    propertyIds: propertyId ? [propertyId] : [],
-  });
-
-  await db()
-    .update(whatsappContacts)
-    .set({ leadId: lead.id, contactType: "customer", updatedAt: new Date() })
-    .where(eq(whatsappContacts.id, input.contactId));
-
-  await db()
-    .update(whatsappConversations)
-    .set({ leadId: lead.id, updatedAt: new Date() })
-    .where(eq(whatsappConversations.id, input.conversationId));
-
-  return lead.id;
-}
-
-/**
- * `leads.source_key` is a foreign key into a seeded table. If the seed has not
- * been run, inserting "whatsapp" fails and the enquiry is lost — which is the
- * one outcome this system must never produce.
- */
-const globalForSource = globalThis as unknown as { __waSourceKey?: string | null };
-
-async function whatsappSourceKey(): Promise<string | null> {
-  if (globalForSource.__waSourceKey !== undefined) return globalForSource.__waSourceKey;
-
+/** The message being handled is already stored, so 1 means first contact. */
+async function inboundCount(conversationId: string): Promise<number> {
   const [row] = await db()
-    .select({ key: leadSources.key })
-    .from(leadSources)
-    .where(eq(leadSources.key, "whatsapp"))
-    .limit(1);
-
-  if (!row) {
-    console.warn(
-      "[whatsapp] no 'whatsapp' row in lead_sources — leads will be created without a source. Run npm run db:seed.",
+    .select({ n: count() })
+    .from(whatsappMessages)
+    .where(
+      and(
+        eq(whatsappMessages.conversationId, conversationId),
+        eq(whatsappMessages.direction, "inbound"),
+      ),
     );
-  }
-  globalForSource.__waSourceKey = row?.key ?? null;
-  return globalForSource.__waSourceKey;
+  return row?.n ?? 0;
 }
 
 const AVAILABILITY = /\b(available|still (there|on|open)|sold|sold out|booked|on the market)\b/i;

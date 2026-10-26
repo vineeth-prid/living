@@ -11,8 +11,15 @@ import { createLeadAndOpen } from "../actions";
 
 export const metadata = { title: "Add lead" };
 
-export default async function NewLeadPage() {
+export default async function NewLeadPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await requireUser();
+  // Prefill from a link, e.g. "Add as a lead" on a WhatsApp thread. Plain
+  // default values; the form still validates everything on submit.
+  const initial = await searchParams;
 
   const [types, sources, employees, properties] = await Promise.all([
     leadTypeOptions(),
@@ -40,6 +47,7 @@ export default async function NewLeadPage() {
           employees={employees}
           propertyOptions={properties}
           isAdmin={user.role === "admin"}
+          initial={initial}
         />
       </div>
     </>

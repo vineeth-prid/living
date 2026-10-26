@@ -10,6 +10,7 @@ import {
   assignLead,
   changePriority,
   changeStatus,
+  deleteLeadAction,
   linkPropertyAction,
   logInteraction,
   setFollowUpStatus,
@@ -37,6 +38,26 @@ function useAction() {
       if (!result.ok) setError(result.error);
     });
   return { pending, error, run };
+}
+
+export function DeleteLeadButton({ id, name }: { id: string; name: string }) {
+  const { pending, error, run } = useAction();
+  return (
+    <>
+      {error && <span className="text-xs text-[var(--color-danger)]">{error}</span>}
+      <Button
+        size="sm"
+        variant="danger"
+        disabled={pending}
+        onClick={() => {
+          if (!confirm(`Delete the lead "${name}"? It leaves every list and can't be undone here.`)) return;
+          run(() => deleteLeadAction(id));
+        }}
+      >
+        Delete
+      </Button>
+    </>
+  );
 }
 
 /** Status, priority and assignment — the three controls used most. */

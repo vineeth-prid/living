@@ -164,6 +164,26 @@ export default async function ThreadPage({
             </Card>
           )}
 
+          {!thread.leadId && thread.contactType !== "employee" && (
+            <Card title="Lead">
+              <p className="text-xs text-stone-500">
+                Not a lead. WhatsApp messages don&apos;t create leads on their own.
+              </p>
+              <Link
+                href={`/admin/leads/new?${new URLSearchParams({
+                  name: thread.displayName ?? "",
+                  mobile: `+${thread.phoneNumber.replace(/\D/g, "")}`,
+                  sourceKey: "whatsapp",
+                  initialMessage:
+                    messages.find((m) => m.direction === "inbound" && m.text)?.text ?? "",
+                })}`}
+                className="mt-3 inline-block text-xs text-pine-700 hover:underline"
+              >
+                Add as a lead →
+              </Link>
+            </Card>
+          )}
+
           {thread.propertyId && (
             <Card title="Listing">
               <Link

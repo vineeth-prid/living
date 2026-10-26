@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   leadActivities,
@@ -6,6 +6,8 @@ import {
   leadProperties,
   leads,
   properties,
+  whatsappContacts,
+  whatsappConversations,
 } from "./db/schema";
 import { newId, nextReference } from "./ids";
 import { notifyWebsiteEnquiry } from "./notify";
@@ -177,6 +179,34 @@ export async function createLead(input: CreateLeadInput): Promise<{
       kind: "initial",
       authorId: input.createdById ?? null,
     });
+  }
+
+  // A WhatsApp number that wrote in before it was a lead: pin its thread here,
+  // since the WhatsApp path itself never creates one (see crm/whatsapp/customer).
+  const digits = normaliseMobile(input.mobile);
+  if (digits.length === 10) {
+    const pinned = await db()
+      .update(whatsappContacts)
+      .set({ leadId: id, contactType: "customer", updatedAt: new Date() })
+      .where(
+        and(
+          isNull(whatsappContacts.leadId),
+          ne(whatsappContacts.contactType, "employee"),
+          sql`right(regexp_replace(${whatsappContacts.phoneNumber}, '\\D', '', 'g'), 10) = ${digits}`,
+        ),
+      )
+      .returning({ id: whatsappContacts.id });
+    if (pinned.length) {
+      await db()
+        .update(whatsappConversations)
+        .set({ leadId: id, updatedAt: new Date() })
+        .where(
+          and(
+            isNull(whatsappConversations.leadId),
+            inArray(whatsappConversations.contactId, pinned.map((c) => c.id)),
+          ),
+        );
+    }
   }
 
   for (const propertyId of input.propertyIds ?? []) {

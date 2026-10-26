@@ -14,6 +14,8 @@ import {
   leadProperties,
   leads,
   users,
+  whatsappContacts,
+  whatsappConversations,
   type LeadStatus,
 } from "@/lib/db/schema";
 import { fail, requireUser, succeed, type ActionResult } from "@/lib/auth/dal";
@@ -213,6 +215,45 @@ export async function updateLeadAction(
 
   touch(id);
   return succeed({ id });
+}
+
+/**
+ * Administrators only. A soft delete: the row, its timeline and the audit entry
+ * stay, but the lead leaves every list, duplicate check and WhatsApp lookup —
+ * all of which already filter on `deleted_at`.
+ */
+export async function deleteLeadAction(id: string): Promise<ActionResult<null>> {
+  const actor = await requireUser();
+  if (actor.role !== "admin") return fail("Only an administrator can delete a lead.");
+
+  const before = await loadWritable(actor, id);
+  if (!before) return fail("That lead no longer exists.");
+
+  await db()
+    .update(leads)
+    .set({ deletedAt: new Date(), updatedAt: sql`now()` })
+    .where(eq(leads.id, id));
+
+  // Unpin it from WhatsApp, or the inbox keeps showing a lead nobody can open.
+  await db()
+    .update(whatsappContacts)
+    .set({ leadId: null, updatedAt: new Date() })
+    .where(eq(whatsappContacts.leadId, id));
+  await db()
+    .update(whatsappConversations)
+    .set({ leadId: null, updatedAt: new Date() })
+    .where(eq(whatsappConversations.leadId, id));
+
+  await audit({
+    actorId: actor.id,
+    action: "lead.deleted",
+    entity: "lead",
+    entityId: id,
+    before: { name: before.name, mobile: before.mobile, reference: before.reference },
+  });
+
+  touch(id);
+  redirect("/admin/leads");
 }
 
 /** Rule 6 — a status change always writes a timeline entry. */

@@ -44,7 +44,7 @@ export default async function HomePage() {
               </h2>
             </div>
             <Link
-              href="/services#buying"
+              href="/homes"
               className="inline-flex items-center gap-1.5 text-ui font-medium text-pine-700 hover:text-pine-800"
             >
               View all homes
